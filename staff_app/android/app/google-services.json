@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "590000250363",
+    "project_id": "nova-25aa2",
+    "storage_bucket": "nova-25aa2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:590000250363:android:b96d28b1afc371020aff5e",
+        "android_client_info": {
+          "package_name": "com.example.staff_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDgWJpnZWo_Pp2cQlHlEqNoMPzuzh_Ktv4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
