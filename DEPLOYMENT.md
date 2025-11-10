@@ -51,9 +51,20 @@ git push -u origin main
 
 ### 2.2 Configure Root Directory
 
-1. In Railway project settings, go to **Settings** → **Service**
-2. Set **Root Directory** to: `backend`
-3. Save changes
+**Where to find it:**
+1. Click on your service (the repository you just connected)
+2. Click on the **"Settings"** tab at the top
+3. Scroll down to the **"Source"** section
+4. Find **"Root Directory"** field
+5. Click on it and enter: `backend` (just the word, no quotes)
+6. Click **"Save"** or the checkmark
+
+**Visual Path:**
+```
+Railway Dashboard → Your Service → Settings Tab → Source Section → Root Directory: backend
+```
+
+**Note**: Railway may auto-detect the structure, but you should manually set it to ensure it's correct.
 
 ### 2.3 Add MongoDB Database
 
@@ -137,11 +148,31 @@ Railway should auto-detect the build settings from `nixpacks.toml`, but verify:
 
 ### 3.2 Configure Project Settings
 
-1. **Framework Preset**: Next.js (auto-detected)
-2. **Root Directory**: `admin_web` (click "Edit" and set to `admin_web`)
-3. **Build Command**: `npm run build` (auto-detected)
-4. **Output Directory**: `.next` (auto-detected)
-5. **Install Command**: `npm install` (auto-detected)
+**During Initial Setup (Configure Project page):**
+
+1. **Framework Preset**: Next.js (should be auto-detected)
+2. **Root Directory**: 
+   - Look for **"Root Directory"** section (might be under "Advanced" or have an "Edit" button)
+   - Click **"Edit"** next to Root Directory
+   - Enter: `admin_web`
+   - Click **"Save"** or **"Continue"**
+3. **Build Command**: `npm run build` (should auto-detect)
+4. **Output Directory**: `.next` (should auto-detect)
+5. **Install Command**: `npm install` (should auto-detect)
+
+**If you need to change it after setup:**
+
+1. Go to your project dashboard
+2. Click **"Settings"** tab (top navigation)
+3. Click **"General"** (left sidebar)
+4. Scroll to **"Root Directory"** section
+5. Click **"Edit"** and change to: `admin_web`
+6. Click **"Save"**
+
+**Visual Path:**
+```
+Vercel Dashboard → Your Project → Settings Tab → General → Root Directory: admin_web
+```
 
 ### 3.3 Configure Environment Variables
 

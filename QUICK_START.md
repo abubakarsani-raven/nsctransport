@@ -32,10 +32,16 @@ git push -u origin main
 
 1. Go to Railway.app → New Project → Deploy from GitHub
 2. Select your repository
-3. Set **Root Directory** to: `backend`
+3. **Set Root Directory**:
+   - Click on your service → **Settings** tab
+   - Go to **Source** section
+   - Set **Root Directory** to: `backend`
+   - Save changes
 4. Add MongoDB service (Railway → New → Database → MongoDB)
 5. Add environment variables (see DEPLOYMENT.md for full list)
 6. Copy Railway URL (e.g., `https://your-app.railway.app`)
+
+**See [ROOT_DIRECTORY_SETUP.md](./ROOT_DIRECTORY_SETUP.md) for detailed instructions**
 
 ### Critical Environment Variables for Railway:
 
@@ -53,12 +59,17 @@ ADMIN_WEB_URL=https://your-vercel-app.vercel.app
 
 1. Go to Vercel.com → New Project → Import Git Repository
 2. Select your repository
-3. Set **Root Directory** to: `admin_web`
+3. **Set Root Directory**:
+   - On the "Configure Project" page, find **Root Directory**
+   - Click **Edit** and set to: `admin_web`
+   - (Or later: Settings → General → Root Directory)
 4. Add environment variables:
    - `NEXT_PUBLIC_API_BASE_URL` = Your Railway URL
    - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` = Your Google Maps key
 5. Deploy
 6. Copy Vercel URL (e.g., `https://your-app.vercel.app`)
+
+**See [ROOT_DIRECTORY_SETUP.md](./ROOT_DIRECTORY_SETUP.md) for detailed instructions**
 
 ## Step 4: Update Railway CORS
 
