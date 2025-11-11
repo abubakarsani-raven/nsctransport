@@ -14,9 +14,16 @@ async function bootstrap() {
     ? [
         process.env.ADMIN_WEB_URL,
         process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null,
+        // Railway backend URL (for direct API access if needed)
+        process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : null,
         // Add other allowed origins if needed
       ].filter(Boolean)
-    : true;
+    : [
+        'http://localhost:3001', // Local admin web
+        'http://localhost:3000',  // Local backend (for testing)
+        'http://127.0.0.1:3001',
+        'http://127.0.0.1:3000',
+      ];
     
   app.enableCors({
     origin: allowedOrigins,

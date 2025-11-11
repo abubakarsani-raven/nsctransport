@@ -104,6 +104,9 @@ PORT=3000
 
 # CORS (will be set after Vercel deployment)
 ADMIN_WEB_URL=https://your-vercel-app.vercel.app
+
+# Railway automatically sets this (optional, for reference)
+# RAILWAY_PUBLIC_DOMAIN=nsctransport-production.up.railway.app
 ```
 
 #### Getting Firebase Credentials:
@@ -183,7 +186,8 @@ In Vercel project settings, go to **Environment Variables** and add:
 
 ```env
 # Backend API URL (your Railway URL)
-NEXT_PUBLIC_API_BASE_URL=https://your-railway-app.railway.app
+# Use your actual Railway URL: https://nsctransport-production.up.railway.app
+NEXT_PUBLIC_API_BASE_URL=https://nsctransport-production.up.railway.app
 
 # Google Maps API Key
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
