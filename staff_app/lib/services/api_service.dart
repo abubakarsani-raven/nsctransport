@@ -1,22 +1,14 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../utils/platform_helper.dart';
+import '../config/api_config.dart';
 
 class ApiService {
-  // Use 10.0.2.2 for Android emulator (maps to host's localhost)
-  // Use localhost for iOS simulator and web
-  // For physical devices, use your computer's IP: 'http://192.168.x.x:3000'
-  static String get baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    }
-    if (PlatformHelper.isAndroid) {
-      return 'http://10.0.2.2:3000';
-    }
-    return 'http://localhost:3000';
-  }
+  // Get base URL from ApiConfig which handles environment variables
+  // - Development: Uses localhost (or .env file)
+  // - Production: Uses Railway URL (https://nsctransport-production.up.railway.app)
+  static String get baseUrl => ApiConfig.baseUrl;
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();

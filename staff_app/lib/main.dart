@@ -1,9 +1,11 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode, kReleaseMode;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'firebase_options.dart';
 import 'providers/auth_provider.dart';
 import 'providers/requests_provider.dart';
@@ -25,6 +27,22 @@ import 'services/fcm_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Load environment variables
+  try {
+    // Load production .env file for release builds, development .env for debug builds
+    if (kReleaseMode) {
+      await dotenv.load(fileName: '.env.production');
+      debugPrint('Loaded production environment variables');
+    } else {
+      await dotenv.load(fileName: '.env');
+      debugPrint('Loaded development environment variables');
+    }
+    debugPrint('API Base URL: ${dotenv.env['API_BASE_URL'] ?? 'Not set'}');
+  } catch (e) {
+    debugPrint('Error loading environment variables: $e');
+    debugPrint('Continuing with default configuration...');
+  }
   
   // Initialize Firebase with options from firebase_options.dart
   try {

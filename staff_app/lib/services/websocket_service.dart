@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../utils/platform_helper.dart';
+import '../config/api_config.dart';
 
 class WebSocketService {
   static WebSocketService? _instance;
@@ -37,15 +37,9 @@ class WebSocketService {
     return _instance!;
   }
 
-  String get _baseUrl {
-    if (kIsWeb) {
-      return 'http://localhost:3000';
-    }
-    if (PlatformHelper.isAndroid) {
-      return 'http://10.0.2.2:3000';
-    }
-    return 'http://localhost:3000';
-  }
+  // Get WebSocket URL from ApiConfig
+  // Socket.IO handles both http:// and https:// automatically
+  String get _baseUrl => ApiConfig.baseUrl;
 
   Future<void> connect() async {
     if (_isConnecting || _isConnected) {
