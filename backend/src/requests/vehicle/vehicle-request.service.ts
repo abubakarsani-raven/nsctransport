@@ -423,6 +423,28 @@ export class VehicleRequestService {
       : [UserRole.STAFF];
     
     const isSupervisor = user.isSupervisor === true;
+    
+    // If user is ADMIN, return all vehicle requests (no filtering by stage or requester)
+    if (userRoles.includes(UserRole.ADMIN)) {
+      // Return all vehicle requests - VehicleRequest model only contains vehicle requests
+      // No need to filter by requestType since this service uses the VehicleRequest model
+      return this.requestModel
+        .find({})
+        .populate('requesterId', 'name email phone department')
+        .populate('supervisorId', 'name email role')
+        .populate('assignedDriverId', 'name email phone employeeId')
+        .populate('assignedVehicleId', 'plateNumber make model capacity')
+        .populate('pickupOffice', 'name address coordinates')
+        .populate('actionHistory.performedBy', 'name email role')
+        .populate('correctionHistory.requestedBy', 'name email')
+        .populate('approvalChain.approverId', 'name email role')
+        .populate('rejectedBy', 'name email')
+        .populate('correctedBy', 'name email')
+        .populate('cancelledBy', 'name email')
+        .sort({ createdAt: -1 })
+        .exec();
+    }
+    
     let query: any = {};
     const stages: string[] = [];
 

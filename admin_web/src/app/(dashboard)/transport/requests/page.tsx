@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -24,8 +24,13 @@ type RequestItem = {
 
 async function fetchJSON<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to load");
-  return res.json();
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}: ${res.statusText}` }));
+    console.error(`Failed to fetch ${url}:`, res.status, errorData);
+    throw new Error(errorData.error || errorData.message || `Failed to load: ${res.status} ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data;
 }
 
 export default function TransportRequestsPage() {
@@ -42,10 +47,35 @@ export default function TransportRequestsPage() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
 
-  const { data: requests = [], isLoading } = useQuery<RequestItem[]>({
+  const { data: requests = [], isLoading, error: queryError } = useQuery<RequestItem[]>({
     queryKey: ["transport-requests"],
-    queryFn: () => fetchJSON<RequestItem[]>("/api/transport/requests"),
+    queryFn: async () => {
+      try {
+        // Use the transport requests API endpoint
+        const data = await fetchJSON<RequestItem[]>("/api/transport/requests");
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        console.error("Error fetching transport requests:", err);
+        // If transport endpoint fails, try the old requests endpoint as fallback
+        try {
+          const fallbackData = await fetchJSON<RequestItem[]>("/api/requests");
+          return Array.isArray(fallbackData) ? fallbackData : [];
+        } catch (fallbackErr) {
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          error(`Failed to load transport requests: ${errorMessage}`);
+          throw err;
+        }
+      }
+    },
+    retry: 1,
   });
+  
+  // Show error message if query fails
+  useEffect(() => {
+    if (queryError) {
+      console.error("Query error:", queryError);
+    }
+  }, [queryError]);
 
   const filtered = requests.filter((r) => (filter === "all" ? true : r.status === filter));
 
@@ -190,10 +220,22 @@ export default function TransportRequestsPage() {
                     Loading...
                   </TableCell>
                 </TableRow>
+              ) : queryError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-destructive">
+                    Error loading requests. Please refresh the page.
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 && requests.length > 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center">
+                    No requests match the "{filter}" filter. Showing {requests.length} total request{requests.length !== 1 ? 's' : ''}.
+                  </TableCell>
+                </TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center">
-                    No requests found
+                    No transport requests found
                   </TableCell>
                 </TableRow>
               ) : (
