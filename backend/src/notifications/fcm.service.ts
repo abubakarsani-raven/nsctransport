@@ -24,17 +24,35 @@ export class FcmService implements OnModuleInit {
 
   private async initializeFirebase() {
     try {
-      const serviceAccountPath = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_PATH');
       const firebaseCredentials = this.configService.get<string>('FIREBASE_CREDENTIALS');
+      const serviceAccountPath = this.configService.get<string>('FIREBASE_SERVICE_ACCOUNT_PATH');
 
+      // Priority 1: Use FIREBASE_CREDENTIALS (environment variable) - preferred for production/cloud
+      if (firebaseCredentials) {
+        try {
+          // Initialize with credentials JSON string
+          const serviceAccount = JSON.parse(firebaseCredentials);
+          this.firebaseApp = admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+          });
+          this.logger.log('Firebase Admin initialized with credentials from FIREBASE_CREDENTIALS environment variable');
+          return;
+        } catch (parseError) {
+          this.logger.error('Failed to parse FIREBASE_CREDENTIALS JSON:', parseError);
+          this.logger.warn('Falling back to file path method if available');
+        }
+      }
+
+      // Priority 2: Use FIREBASE_SERVICE_ACCOUNT_PATH (file path) - for local development
       if (serviceAccountPath) {
         // Resolve path relative to project root (process.cwd())
         const absolutePath = path.resolve(process.cwd(), serviceAccountPath);
         
         // Check if file exists
         if (!fs.existsSync(absolutePath)) {
-          this.logger.error(`Firebase service account file not found at: ${absolutePath}`);
+          this.logger.warn(`Firebase service account file not found at: ${absolutePath}`);
           this.logger.warn('Push notifications will be disabled');
+          this.logger.warn('For cloud deployments, use FIREBASE_CREDENTIALS environment variable instead');
           return;
         }
 
@@ -46,17 +64,13 @@ export class FcmService implements OnModuleInit {
           credential: admin.credential.cert(serviceAccount),
         });
         this.logger.log(`Firebase Admin initialized with service account file: ${absolutePath}`);
-      } else if (firebaseCredentials) {
-        // Initialize with credentials JSON string
-        const serviceAccount = JSON.parse(firebaseCredentials);
-        this.firebaseApp = admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-        });
-        this.logger.log('Firebase Admin initialized with credentials from environment');
-      } else {
-        this.logger.warn('Firebase credentials not found. Push notifications will be disabled.');
-        this.logger.warn('Set FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_CREDENTIALS environment variable');
+        return;
       }
+
+      // No credentials found
+      this.logger.warn('Firebase credentials not found. Push notifications will be disabled.');
+      this.logger.warn('For local development: Set FIREBASE_SERVICE_ACCOUNT_PATH environment variable');
+      this.logger.warn('For cloud deployment: Set FIREBASE_CREDENTIALS environment variable with JSON string');
     } catch (error) {
       this.logger.error('Failed to initialize Firebase Admin:', error);
       this.logger.warn('Push notifications will be disabled');

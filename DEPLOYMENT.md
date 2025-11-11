@@ -91,9 +91,12 @@ JWT_EXPIRES_IN=7d
 # Google Maps API
 GOOGLE_MAPS_API_KEY=your-google-maps-api-key
 
-# Firebase Configuration (use JSON string, not file path)
-FIREBASE_CREDENTIALS={"type":"service_account","project_id":"your-project-id",...}
-# Copy the entire JSON from Firebase service account file
+# Firebase Configuration (REQUIRED for cloud deployment)
+# Use FIREBASE_CREDENTIALS with JSON string (NOT FIREBASE_SERVICE_ACCOUNT_PATH)
+FIREBASE_CREDENTIALS={"type":"service_account","project_id":"your-project-id","private_key_id":"...","private_key":"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n","client_email":"...","client_id":"...","auth_uri":"...","token_uri":"...","auth_provider_x509_cert_url":"...","client_x509_cert_url":"..."}
+# IMPORTANT: Copy the ENTIRE JSON content from Firebase service account file as a SINGLE LINE
+# Remove all line breaks and escape quotes if needed
+# Do NOT set FIREBASE_SERVICE_ACCOUNT_PATH in Railway (only use for local development)
 
 # Environment
 NODE_ENV=production
