@@ -9,10 +9,12 @@ import {
   Building2,
   MapPin,
   Building,
+  Truck,
+  Package,
 } from "lucide-react"
 import { usePathname } from "next/navigation"
 
-import { NavMain } from "@/components/nav-main"
+import { NavMain, type NavItem } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
@@ -27,7 +29,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { user } = useAuth()
 
-  const navMain = [
+  const navMain: NavItem[] = [
     {
       title: "Dashboard",
       url: "/",
@@ -35,16 +37,40 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       isActive: pathname === "/",
     },
     {
-      title: "Requests",
-      url: "/requests",
+      title: "ICT Requests",
+      url: "/ict-requests",
       icon: FileText,
-      isActive: pathname === "/requests",
+      isActive: pathname === "/ict-requests",
     },
     {
-      title: "Vehicles",
-      url: "/vehicles",
-      icon: Car,
-      isActive: pathname === "/vehicles",
+      title: "Store Requests",
+      url: "/store-requests",
+      icon: Package,
+      isActive: pathname === "/store-requests",
+    },
+    {
+      title: "Transport",
+      icon: Truck,
+      isActive: pathname.startsWith("/transport"),
+      items: [
+        {
+          title: "Transport Requests",
+          url: "/transport/requests",
+          isActive: pathname === "/transport/requests",
+        },
+        {
+          title: "Vehicles",
+          url: "/transport/vehicles",
+          icon: Car,
+          isActive: pathname === "/transport/vehicles" || pathname.startsWith("/transport/vehicles/"),
+        },
+        {
+          title: "Tracking",
+          url: "/transport/tracking",
+          icon: MapPin,
+          isActive: pathname === "/transport/tracking",
+        },
+      ],
     },
     {
       title: "Users",
@@ -63,12 +89,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "/departments",
       icon: Building,
       isActive: pathname === "/departments",
-    },
-    {
-      title: "Tracking",
-      url: "/tracking",
-      icon: MapPin,
-      isActive: pathname === "/tracking",
     },
   ]
 
