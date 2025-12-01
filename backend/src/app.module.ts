@@ -19,6 +19,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { TrackingModule } from './tracking/tracking.module';
 import { DepartmentsModule } from './departments/departments.module';
 import { MaintenanceModule } from './maintenance/maintenance.module';
+import { FaultsModule } from './faults/faults.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -44,6 +45,7 @@ import { MaintenanceModule } from './maintenance/maintenance.module';
     TrackingModule,
     DepartmentsModule,
     MaintenanceModule,
+    FaultsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

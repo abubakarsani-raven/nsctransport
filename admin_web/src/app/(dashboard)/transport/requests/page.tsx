@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/use-toast";
 import { VehicleQuickLinks } from "@/components/transport/VehicleQuickLinks";
+import Link from "next/link";
 
 type RequestItem = {
   _id: string;
@@ -257,6 +258,14 @@ export default function TransportRequestsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
+                        {/* Only show details for completed or cancelled trips */}
+                        {["completed", "cancelled"].includes(r.status) && (
+                          <Button asChild variant="ghost" size="sm">
+                            <Link href={`/transport/requests/${r._id}`}>View details</Link>
+                          </Button>
+                        )}
+
+                        {/* Approval / assignment actions for in-flight requests */}
                         {["pending", "supervisor_approved", "dgs_approved", "ddgs_approved", "ad_transport_approved"].includes(
                           r.status
                         ) && (

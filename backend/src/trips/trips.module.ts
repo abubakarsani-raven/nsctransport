@@ -9,6 +9,7 @@ import { MapsModule } from '../maps/maps.module';
 import { OfficesModule } from '../offices/offices.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
+import { VehiclesModule } from '../vehicles/vehicles.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { UsersModule } from '../users/users.module';
     OfficesModule,
     NotificationsModule,
     UsersModule,
+    VehiclesModule,
   ],
   controllers: [TripsController],
   providers: [TripsService],

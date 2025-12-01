@@ -130,3 +130,8 @@ After setup, check the console logs:
 ### Android emulator can't connect
 **Solution**: The code automatically handles this. Make sure your backend is running on `localhost:3000`
 
+
+
+
+
+

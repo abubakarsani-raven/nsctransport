@@ -16,6 +16,12 @@ export class UpdateRequestDto {
   };
 
   @IsOptional()
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 

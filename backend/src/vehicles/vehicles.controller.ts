@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Request, Query } from '@nestjs/common';
 import { VehiclesService } from './vehicles.service';
+import { VehicleDistanceService } from './vehicle-distance.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { AssignPermanentlyDto } from './dto/assign-permanently.dto';
 import { UpdatePermanentAssignmentDto } from './dto/update-permanent-assignment.dto';
@@ -12,7 +13,10 @@ import { VehicleStatus } from './schemas/vehicle.schema';
 @Controller('vehicles')
 @UseGuards(JwtAuthGuard)
 export class VehiclesController {
-  constructor(private vehiclesService: VehiclesService) {}
+  constructor(
+    private vehiclesService: VehiclesService,
+    private vehicleDistanceService: VehicleDistanceService,
+  ) {}
 
   @Get()
   async findAll() {
@@ -82,6 +86,59 @@ export class VehiclesController {
   @Get('permanently-assigned/:userId')
   async findPermanentlyAssignedByUser(@Param('userId') userId: string) {
     return this.vehiclesService.findPermanentlyAssignedByUser(userId);
+  }
+
+  @Get('my-assigned')
+  async getMyAssignedVehicle(@Request() req) {
+    const userId = req.user._id.toString();
+    return this.vehiclesService.findPermanentlyAssignedByUser(userId);
+  }
+
+  @Get(':id/distance')
+  async getVehicleDistance(@Param('id') id: string) {
+    const totalDistance = await this.vehicleDistanceService.getTotalDistance(id);
+    const vehicle = await this.vehiclesService.findById(id);
+    return {
+      totalDistance,
+      vehicle: vehicle ? {
+        _id: vehicle._id,
+        plateNumber: vehicle.plateNumber,
+        make: vehicle.make,
+        model: vehicle.model,
+        lastOdometerUpdate: vehicle.lastOdometerUpdate,
+      } : null,
+    };
+  }
+
+  @Get(':id/distance/history')
+  async getDistanceHistory(
+    @Param('id') id: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.vehicleDistanceService.getDistanceHistory(
+      id,
+      startDate ? new Date(startDate) : undefined,
+      endDate ? new Date(endDate) : undefined,
+    );
+  }
+
+  @Post(':id/distance/manual')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.TRANSPORT_OFFICER)
+  async logManualDistance(
+    @Param('id') id: string,
+    @Body() dto: { distance: number; notes?: string },
+    @Request() req,
+  ) {
+    return this.vehicleDistanceService.logDistance(
+      id,
+      dto.distance,
+      'manual',
+      undefined,
+      req.user._id.toString(),
+      dto.notes,
+    );
   }
 }
 

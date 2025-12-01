@@ -5,6 +5,7 @@ import 'package:google_places_flutter/google_places_flutter.dart';
 import 'package:google_places_flutter/model/prediction.dart';
 import 'package:intl/intl.dart';
 import 'package:modal_bottom_sheet/modal_bottom_sheet.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../providers/requests_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/realtime_provider.dart';
@@ -519,6 +520,17 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> with SingleTi
   Future<void> _handlePlaceSelected(Prediction prediction) async {
     setState(() {
       _destinationController.text = prediction.description ?? '';
+
+      // google_places_flutter populates lat/lng strings when isLatLngRequired is true
+      final String? latStr = prediction.lat;
+      final String? lngStr = prediction.lng;
+
+      final double? lat = latStr != null ? double.tryParse(latStr) : null;
+      final double? lng = lngStr != null ? double.tryParse(lngStr) : null;
+
+      if (lat != null && lng != null) {
+        _destinationCoordinates = LatLng(lat, lng);
+      }
     });
   }
 
@@ -821,7 +833,7 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> with SingleTi
                     const SizedBox(height: AppTheme.spacingM),
                     GooglePlaceAutoCompleteTextField(
                       textEditingController: _destinationController,
-                      googleAPIKey: "AIzaSyD3apWjzMf9iPAdZTSGR4ln2pU7U6Lo7_I",
+                      googleAPIKey: dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '',
                       inputDecoration: InputDecoration(
                         labelText: 'Destination *',
                         border: OutlineInputBorder(
@@ -831,7 +843,6 @@ class _CreateRequestScreenState extends State<CreateRequestScreen> with SingleTi
                         hintText: 'Type or select on map',
                       ),
                       debounceTime: 400,
-                      countries: const ["ng"],
                       isLatLngRequired: true,
                       getPlaceDetailWithLatLng: _handlePlaceSelected,
                       itemClick: (prediction) {

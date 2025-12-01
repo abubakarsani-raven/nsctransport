@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, UseGuards, Request, Patch } from '@nestjs/common';
 import { VehicleRequestService } from './vehicle-request.service';
 import { CreateRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
@@ -80,6 +80,36 @@ export class VehicleRequestController {
     @Request() req,
   ) {
     return this.vehicleRequestService.cancel(id, req.user._id.toString(), cancelDto.cancellationReason);
+  }
+
+  /**
+   * TEMPORARY ENDPOINT: Add coordinates to an existing vehicle request
+   * This endpoint is for migrating existing requests to include coordinates
+   * TODO: Remove this endpoint after migration is complete
+   */
+  @Patch('add-coordinates')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.TRANSPORT_OFFICER)
+  async addCoordinates(
+    @Body() body: { requestId: string; coordinates: { lat: number; lng: number } },
+    @Request() req,
+  ) {
+    return this.vehicleRequestService.addCoordinates(body.requestId, body.coordinates);
+  }
+
+  /**
+   * TEMPORARY ENDPOINT: Batch add coordinates to multiple vehicle requests
+   * This endpoint is for migrating existing requests to include coordinates
+   * TODO: Remove this endpoint after migration is complete
+   */
+  @Patch('batch-add-coordinates')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.ADMIN, UserRole.TRANSPORT_OFFICER)
+  async batchAddCoordinates(
+    @Body() body: { requests: Array<{ requestId: string; coordinates: { lat: number; lng: number } }> },
+    @Request() req,
+  ) {
+    return this.vehicleRequestService.batchAddCoordinates(body.requests);
   }
 }
 

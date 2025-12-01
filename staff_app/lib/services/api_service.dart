@@ -160,6 +160,32 @@ class ApiService {
     }
   }
 
+  Future<List<dynamic>> getAvailableDriversForRequest(String requestId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/assignments/available-drivers/$requestId'),
+      headers: await _getHeaders(),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get available drivers for request');
+    }
+  }
+
+  Future<List<dynamic>> getAvailableVehiclesForRequest(String requestId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/assignments/available-vehicles/$requestId'),
+      headers: await _getHeaders(),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Failed to get available vehicles for request');
+    }
+  }
+
   Future<List<dynamic>> getVehicles() async {
     final response = await http.get(
       Uri.parse('$baseUrl/vehicles'),

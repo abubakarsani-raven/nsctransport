@@ -344,7 +344,7 @@ class _TransportOfficerScreenState extends State<TransportOfficerScreen>
                                 isSubmitting = true;
                               });
 
-                              final success = await requestsProvider.assignDriverAndVehicle(
+                              final errorMessage = await requestsProvider.assignDriverAndVehicle(
                                 requestId: _extractId(request) ?? '',
                                 driverId: selectedDriverId!,
                                 vehicleId: selectedVehicleId!,
@@ -353,14 +353,16 @@ class _TransportOfficerScreenState extends State<TransportOfficerScreen>
 
                               if (!context.mounted) return;
 
-                              if (success) {
+                              if (errorMessage == null) {
                                 Navigator.of(context).pop(true);
                               } else {
                                 setModalState(() {
                                   isSubmitting = false;
                                 });
                                 ToastHelper.showErrorToast(
-                                  'Failed to assign driver and vehicle. Please try again.',
+                                  errorMessage.isNotEmpty
+                                      ? errorMessage
+                                      : 'Failed to assign driver and vehicle. Please try again.',
                                 );
                               }
                             },
@@ -528,6 +530,34 @@ class _AssignmentCard extends StatelessWidget {
   final VoidCallback onAssign;
   final VoidCallback onView;
 
+  String? _resolveApproverName() {
+    final approvalChain = request['approvalChain'];
+    if (approvalChain is! List || approvalChain.isEmpty) return null;
+
+    final status = (request['status'] ?? '').toString();
+    final targetStage = RequestWorkflow.mapStatusToStage(status);
+
+    for (final rawEntry in approvalChain.reversed) {
+      if (rawEntry is! Map) continue;
+      final entry = rawEntry;
+      final entryStageRaw = entry['stage']?.toString() ?? '';
+      final entryStatusRaw = entry['status']?.toString() ?? '';
+      final entryStage = entryStageRaw.toLowerCase();
+      final normalizedStage = entryStage.isNotEmpty
+          ? entryStage
+          : RequestWorkflow.mapStatusToStage(entryStatusRaw).toLowerCase();
+
+      if (normalizedStage == targetStage) {
+        final approver = entry['performedBy'] ?? entry['approverId'];
+        if (approver is Map && approver['name'] != null) {
+          return approver['name'].toString();
+        }
+      }
+    }
+
+    return null;
+  }
+
   String _formatDate(dynamic value) {
     if (value == null) return 'Unknown date';
     try {
@@ -550,6 +580,7 @@ class _AssignmentCard extends StatelessWidget {
     final assignedVehicle = request['assignedVehicleId'];
     final palette = AppPalette.of(context);
     final theme = Theme.of(context);
+    final approverName = _resolveApproverName();
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: AppTheme.spacingS),
@@ -558,16 +589,17 @@ class _AssignmentCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // First row: destination/title
+            Text(
+              destination,
+              style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            // Second row: status + approver on their own line
+            const SizedBox(height: AppTheme.spacingXS),
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    destination,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppTheme.spacingM,
@@ -585,6 +617,18 @@ class _AssignmentCard extends StatelessWidget {
                         ),
                   ),
                 ),
+                if (approverName != null) ...[
+                  const SizedBox(width: AppTheme.spacingS),
+                  Expanded(
+                    child: Text(
+                      'Approved by $approverName',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: palette.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             if (purpose.isNotEmpty) ...[
@@ -679,13 +723,25 @@ class _FleetOverviewTabState extends State<_FleetOverviewTab> {
   Set<int> _selectedSegment = const {0};
 
   void _ensureInitialSelection(TransportOfficerProvider provider) {
-    if (_selectedVehicleId != null) return;
     final vehicles = provider.filteredFleetVehicles;
     if (vehicles.isEmpty) return;
+
+    // Ensure the currently selected vehicle (if any) still exists
+    final vehicleIds = vehicles
+        .map((vehicle) => _extractId(vehicle))
+        .whereType<String>()
+        .toSet();
+
+    if (_selectedVehicleId != null && vehicleIds.contains(_selectedVehicleId)) {
+      return;
+    }
+
+    // Fallback to the first available vehicle
     final firstId = _extractId(vehicles.first);
     if (firstId == null) return;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _selectedVehicleId != null) return;
+      if (!mounted) return;
       _selectVehicle(firstId, provider, silent: true);
     });
   }
@@ -982,11 +1038,23 @@ class _FleetOverviewTabState extends State<_FleetOverviewTab> {
 
   Widget _buildMaintenancePanel(TransportOfficerProvider provider) {
     final vehicles = provider.filteredFleetVehicles;
-    final selectedId = _selectedVehicleId;
-    final records =
-        selectedId == null ? const <dynamic>[] : provider.maintenanceRecordsFor(selectedId);
-    final reminders =
-        selectedId == null ? const <dynamic>[] : provider.maintenanceRemindersFor(selectedId);
+    final vehicleIds = vehicles
+        .map((vehicle) => _extractId(vehicle))
+        .whereType<String>()
+        .toList();
+
+    // Ensure the selected vehicle exists in the current list; otherwise clear it
+    final String? selectedId = (_selectedVehicleId != null &&
+            vehicleIds.contains(_selectedVehicleId))
+        ? _selectedVehicleId
+        : null;
+
+    final records = selectedId == null
+        ? const <dynamic>[]
+        : provider.maintenanceRecordsFor(selectedId);
+    final reminders = selectedId == null
+        ? const <dynamic>[]
+        : provider.maintenanceRemindersFor(selectedId);
 
     if (vehicles.isEmpty) {
       return Card(

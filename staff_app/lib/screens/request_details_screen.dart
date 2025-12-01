@@ -118,8 +118,8 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
     try {
 
       final results = await Future.wait<List<dynamic>>([
-        requestsProvider.getAvailableDrivers(),
-        requestsProvider.getAvailableVehicles(),
+        requestsProvider.getAvailableDriversForRequest(widget.requestId),
+        requestsProvider.getAvailableVehiclesForRequest(widget.requestId),
         _apiService.getOffices(),
       ]);
 
@@ -252,6 +252,10 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                         labelText: 'Driver',
                         border: OutlineInputBorder(),
                       ),
+                      isExpanded: true,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 13,
+                          ),
                       items: drivers.isEmpty
                           ? [
                               const DropdownMenuItem<String>(
@@ -319,6 +323,10 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                         labelText: 'Vehicle',
                         border: OutlineInputBorder(),
                       ),
+                      isExpanded: true,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 13,
+                          ),
                       items: vehicles.isEmpty
                           ? [
                               const DropdownMenuItem<String>(
@@ -361,6 +369,10 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                         labelText: 'Pickup Office',
                         border: OutlineInputBorder(),
                       ),
+                      isExpanded: true,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 13,
+                          ),
                       items: offices.map<DropdownMenuItem<String>>((office) {
                         final id = _extractId(office);
                         String label = 'Office';
@@ -375,7 +387,11 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                         }
                         return DropdownMenuItem<String>(
                           value: id,
-                          child: Text(label),
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList(),
                       onChanged: isSubmitting
@@ -398,7 +414,7 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                                 isSubmitting = true;
                               });
 
-                              final success = await requestsProvider.assignDriverAndVehicle(
+                              final errorMessage = await requestsProvider.assignDriverAndVehicle(
                                 requestId: widget.requestId,
                                 driverId: selectedDriverId!,
                                 vehicleId: selectedVehicleId!,
@@ -409,13 +425,17 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                                 return;
                               }
 
-                              if (success) {
+                              if (errorMessage == null) {
                                 Navigator.of(context).pop(true);
                               } else {
                                 setModalState(() {
                                   isSubmitting = false;
                                 });
-                                ToastHelper.showErrorToast('Failed to assign driver and vehicle');
+                                ToastHelper.showErrorToast(
+                                  errorMessage.isNotEmpty
+                                      ? errorMessage
+                                      : 'Failed to assign driver and vehicle',
+                                );
                               }
                             },
                       icon: isSubmitting
@@ -999,6 +1019,22 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
               _buildInfoRow('Purpose', _request!['purpose'] ?? 'Not specified', Icons.description),
               const Divider(height: AppTheme.spacingXL),
               _buildInfoRow('Passengers', '${_request!['passengerCount'] ?? 0}', Icons.people),
+              if (_request!['estimatedDistance'] != null) ...[
+                const Divider(height: AppTheme.spacingXL),
+                _buildInfoRow(
+                  'Estimated Distance',
+                  '${(_request!['estimatedDistance'] as num).toStringAsFixed(1)} km',
+                  Icons.straighten_rounded,
+                ),
+              ],
+              if (_request!['estimatedFuelLitres'] != null) ...[
+                const Divider(height: AppTheme.spacingXL),
+                _buildInfoRow(
+                  'Estimated Fuel',
+                  '${(_request!['estimatedFuelLitres'] as num).toStringAsFixed(2)} L',
+                  Icons.local_gas_station_rounded,
+                ),
+              ],
               if (_request!['startDate'] != null) ...[
                 const Divider(height: AppTheme.spacingXL),
                 _buildInfoRow(
@@ -1058,6 +1094,8 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
     final endDate = _formatDate(request['endDate'], includeTime: true);
     final driverName = _resolvePersonName(request['assignedDriverId']);
     final vehicleLabel = _resolveVehicleLabel(request['assignedVehicleId']);
+    final estimatedDistance = request['estimatedDistance'];
+    final estimatedFuelLitres = request['estimatedFuelLitres'];
 
     return AppCard(
       backgroundColor: theme.colorScheme.surface,
@@ -1125,6 +1163,18 @@ class _RequestDetailsScreenState extends State<RequestDetailsScreen> with Single
                   label: 'Passengers: $passengerCount',
                   maxWidth: pillWidth,
                 ),
+                if (estimatedDistance is num && estimatedDistance > 0)
+                  _summaryPill(
+                    icon: Icons.straighten_rounded,
+                    label: 'Est. distance: ${estimatedDistance.toStringAsFixed(1)} km',
+                    maxWidth: pillWidth,
+                  ),
+                if (estimatedFuelLitres is num && estimatedFuelLitres > 0)
+                  _summaryPill(
+                    icon: Icons.local_gas_station_rounded,
+                    label: 'Est. fuel: ${estimatedFuelLitres.toStringAsFixed(2)} L',
+                    maxWidth: pillWidth,
+                  ),
                 if (pickup.isNotEmpty)
                   _summaryPill(
                     icon: Icons.location_city_rounded,

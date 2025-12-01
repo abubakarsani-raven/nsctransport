@@ -15,6 +15,12 @@ export class CreateRequestDto {
     lng: number;
   };
 
+  @IsOptional()
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+
   @IsDateString()
   @IsNotEmpty()
   startDate: string;

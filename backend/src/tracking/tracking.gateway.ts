@@ -17,7 +17,7 @@ import { UsersService } from '../users/users.service';
 import { VehicleRequestService } from '../requests/vehicle/vehicle-request.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { OnEvent } from '@nestjs/event-emitter';
-import { HistoryUpdatedEvent, NotificationUpdatedEvent, RequestUpdatedEvent, UserUpdatedEvent } from '../events/events';
+import { HistoryUpdatedEvent, LocationUpdatedEvent, NotificationUpdatedEvent, RequestUpdatedEvent, UserUpdatedEvent } from '../events/events';
 
 @WebSocketGateway({
   cors: {
@@ -366,6 +366,20 @@ export class TrackingGateway implements OnGatewayConnection, OnGatewayDisconnect
   @OnEvent('history.updated')
   async handleHistoryUpdated(event: HistoryUpdatedEvent) {
     await this.broadcastHistoryToParticipants(event.requestId);
+  }
+
+  @OnEvent('location.updated')
+  async handleLocationUpdated(event: LocationUpdatedEvent) {
+    // Broadcast location update to trip-specific room
+    this.server.to(`trip:${event.tripId}`).emit('trip:location', {
+      tripId: event.tripId,
+      driverId: event.driverId,
+      location: event.location,
+    });
+    
+    // Also update vehicle/driver locations for general tracking
+    this.broadcastVehicleUpdate();
+    this.broadcastDriverUpdate();
   }
 }
 

@@ -67,6 +67,17 @@ export class VehicleRequest {
     lng: number;
   };
 
+  @Prop({
+    type: {
+      lat: Number,
+      lng: Number,
+    },
+  })
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+
   @Prop({ required: true })
   startDate: Date;
 
@@ -115,10 +126,16 @@ export class VehicleRequest {
   estimatedDistance?: number;
 
   @Prop()
+  estimatedFuelLitres?: number;
+
+  @Prop()
   actualDistance?: number;
 
   @Prop()
   actualTime?: number;
+
+  @Prop()
+  averageSpeed?: number; // Average speed in km/h
 
   // Rejection fields (deprecated in favor of actionHistory, kept for backward compatibility)
   @Prop()

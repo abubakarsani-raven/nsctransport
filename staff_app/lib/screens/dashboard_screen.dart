@@ -127,9 +127,19 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   List<dynamic> _getPendingApprovalRequests(List<dynamic> allRequests) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final userId = authProvider.user?['id'] ?? authProvider.user?['_id'];
+    final userRoles = authProvider.getRoles();
+    
+    debugPrint('[DEBUG PENDING] Total requests: ${allRequests.length}');
+    debugPrint('[DEBUG PENDING] User roles: $userRoles');
+    debugPrint('[DEBUG PENDING] User ID: $userId');
+    
     return allRequests.where((r) {
       final status = r['status'] ?? '';
+      final currentStage = r['currentStage'] ?? '';
       final reqId = r['requesterId'];
+      final requestId = r['_id']?.toString() ?? 'unknown';
+      
+      debugPrint('[DEBUG PENDING] Checking request $requestId: currentStage=$currentStage, status=$status');
       
       // Don't show own requests
       String? reqIdStr;
@@ -143,15 +153,23 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       
       // Exclude own requests
       if (reqIdStr == userId?.toString()) {
+        debugPrint('[DEBUG PENDING] Request $requestId excluded: own request (requesterId=$reqIdStr, userId=$userId)');
         return false;
       }
       
       // Only show requests that can actually be approved (status must be pending, not needs_correction)
       if (status == 'needs_correction') {
+        debugPrint('[DEBUG PENDING] Request $requestId excluded: needs_correction');
         return false;
       }
       
-      return _canApproveRequest(r);
+      final canApprove = _canApproveRequest(r);
+      debugPrint('[DEBUG PENDING] Request $requestId canApprove: $canApprove (currentStage=$currentStage, status=$status)');
+      if (!canApprove && (currentStage.toString().contains('ddgs') || status.toString().contains('dgs_approved'))) {
+        debugPrint('[DEBUG PENDING] Request $requestId at DDGS stage but canApprove=false. Check role: hasRole(ddgs)=${authProvider.hasRole('ddgs')}');
+      }
+      
+      return canApprove;
     }).toList();
   }
 
@@ -241,7 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   bool _canApproveRequest(Map<String, dynamic> request) {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     // Get current stage (use currentStage if available, otherwise map from status)
-    final currentStage = (request['currentStage'] ?? request['status'] ?? '').toString().toLowerCase();
+    final currentStage = (request['currentStage'] ?? request['status'] ?? '').toString().toLowerCase().trim();
     final userId = authProvider.user?['id'] ?? authProvider.user?['_id'];
     final requestType = request['requestType'] ?? 'vehicle';
     
@@ -253,8 +271,11 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             ? (supervisorId['_id'] ?? supervisorId['id'])?.toString()
             : supervisorId?.toString();
         if (supervisorIdStr == userId?.toString()) {
-          // Supervisor can approve at submitted or supervisor_review stages (with or without prefix)
-          if (currentStage.contains('submitted') || 
+          // Supervisor can approve at submitted or supervisor_review stages
+          // Use exact match first, then fallback to contains for backward compatibility
+          if (currentStage == 'submitted' || 
+              currentStage == 'supervisor_review' ||
+              currentStage.contains('submitted') || 
               currentStage.contains('supervisor_review')) {
             return true;
           }
@@ -266,44 +287,70 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     switch (requestType) {
       case 'ict':
         // ICT Officer can approve at ict_officer_review stage
-        if (currentStage.contains('ict_officer_review') || 
-            currentStage == 'ict_officer_review') {
+        // Use exact match to avoid substring matching issues
+        if (currentStage == 'ict_officer_review' || currentStage.contains('ict_officer_review')) {
           return authProvider.hasRole('ict_officer');
         }
         // Already handled supervisor stages above
         return false;
       case 'store':
         // Store Officer can approve at store_officer_review stage
-        if (currentStage.contains('store_officer_review') || 
-            currentStage == 'store_officer_review') {
+        // Use exact match to avoid substring matching issues
+        if (currentStage == 'store_officer_review' || currentStage.contains('store_officer_review')) {
           return authProvider.hasRole('store_officer');
         }
         // Already handled supervisor stages above
         return false;
       case 'vehicle':
       default:
-        // Vehicle request stages
-        if (currentStage.contains('dgs_review') || currentStage == 'dgs_review') {
-          return authProvider.hasRole('dgs');
+        // Vehicle request stages - Use exact match first, check in order from most specific to least specific
+        // IMPORTANT: Always check DDGS before DGS since "ddgs_review".contains("dgs_review") = true
+        
+        // 1. DDGS Review (must check before DGS due to substring match)
+        if (currentStage == 'ddgs_review') {
+          final hasRole = authProvider.hasRole('ddgs');
+          debugPrint('[DEBUG CAN APPROVE] DDGS check: currentStage=$currentStage, hasRole(ddgs)=$hasRole');
+          return hasRole;
         }
-        if (currentStage.contains('ddgs_review') || currentStage == 'ddgs_review') {
-          return authProvider.hasRole('ddgs');
+        
+        // 2. DGS Review
+        if (currentStage == 'dgs_review') {
+          final hasRole = authProvider.hasRole('dgs');
+          debugPrint('[DEBUG CAN APPROVE] DGS check: currentStage=$currentStage, hasRole(dgs)=$hasRole');
+          return hasRole;
         }
-        if (currentStage.contains('ad_transport_review') || currentStage == 'ad_transport_review') {
+        
+        // 3. AD Transport Review
+        if (currentStage == 'ad_transport_review') {
           return authProvider.hasRole('ad_transport');
         }
-        if (currentStage.contains('transport_officer_assignment') || currentStage == 'transport_officer_assignment') {
+        
+        // 4. Transport Officer Assignment
+        if (currentStage == 'transport_officer_assignment') {
           return authProvider.hasRole('transport_officer') || authProvider.hasRole('dgs');
         }
-        // DGS can also assign at dgs_review stage (skip to Transport Officer)
-        if (currentStage.contains('dgs_review') || currentStage == 'dgs_review') {
-          return authProvider.hasRole('dgs');
-        }
-        // For submitted/supervisor_review, DGS can also approve (if not supervisor)
-        if ((currentStage.contains('submitted') || currentStage.contains('supervisor_review')) &&
+        
+        // 5. Submitted/Supervisor Review - DGS can also approve (if not supervisor)
+        if ((currentStage == 'submitted' || currentStage == 'supervisor_review') &&
             !authProvider.isSupervisor()) {
           return authProvider.hasRole('dgs');
         }
+        
+        // Fallback: backward compatibility for legacy data (contains check)
+        // But only if exact match didn't work
+        if (currentStage.contains('ddgs_review') && currentStage != 'ddgs_review') {
+          final hasRole = authProvider.hasRole('ddgs');
+          debugPrint('[DEBUG CAN APPROVE] DDGS fallback check: currentStage=$currentStage, hasRole(ddgs)=$hasRole');
+          return hasRole;
+        }
+        if (currentStage.contains('dgs_review') && 
+            !currentStage.contains('ddgs_review') && 
+            currentStage != 'dgs_review') {
+          final hasRole = authProvider.hasRole('dgs');
+          debugPrint('[DEBUG CAN APPROVE] DGS fallback check: currentStage=$currentStage, hasRole(dgs)=$hasRole');
+          return hasRole;
+        }
+        
         return false;
     }
   }
@@ -423,6 +470,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     final theme = Theme.of(context);
     final palette = AppPalette.of(context);
     final requestType = request['requestType'] ?? 'vehicle';
+    final estimatedDistance = request['estimatedDistance'];
+    final estimatedFuelLitres = request['estimatedFuelLitres'];
     
     // Determine title, icon, and color label based on request type
     String title;
@@ -622,6 +671,42 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
               ],
             ],
           ),
+          if (requestType == 'vehicle' &&
+              ((estimatedDistance is num && estimatedDistance > 0) ||
+                  (estimatedFuelLitres is num && estimatedFuelLitres > 0)))
+            Padding(
+              padding: const EdgeInsets.only(top: AppTheme.spacingS),
+              child: Row(
+                children: [
+                  if (estimatedDistance is num && estimatedDistance > 0) ...[
+                    Icon(
+                      Icons.straighten_rounded,
+                      size: 16,
+                      color: theme.colorScheme.outline,
+                    ),
+                    const SizedBox(width: AppTheme.spacingS),
+                    Text(
+                      '${estimatedDistance.toStringAsFixed(1)} km',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                  if (estimatedFuelLitres is num && estimatedFuelLitres > 0) ...[
+                    if (estimatedDistance is num && estimatedDistance > 0)
+                      const SizedBox(width: AppTheme.spacingL),
+                    Icon(
+                      Icons.local_gas_station_rounded,
+                      size: 16,
+                      color: theme.colorScheme.outline,
+                    ),
+                    const SizedBox(width: AppTheme.spacingS),
+                    Text(
+                      '${estimatedFuelLitres.toStringAsFixed(2)} L',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -692,6 +777,18 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       final requestId = r['_id']?.toString();
       return !vehicleProvider.requests.any((vr) => vr['_id']?.toString() == requestId);
     }));
+    
+    debugPrint('[DEBUG ALL REQUESTS] Vehicle: ${vehicleProvider.requests.length}, ICT: ${ictProvider.requests.length}, Store: ${storeProvider.requests.length}, Legacy: ${requestsProvider.requests.length}');
+    debugPrint('[DEBUG ALL REQUESTS] Total combined: ${allRequests.length}');
+    
+    // Log requests with ddgs_review stage
+    for (final req in allRequests) {
+      final currentStage = req['currentStage']?.toString() ?? '';
+      final status = req['status']?.toString() ?? '';
+      if (currentStage.contains('ddgs') || status.contains('dgs_approved')) {
+        debugPrint('[DEBUG ALL REQUESTS] Found DDGS request: _id=${req['_id']}, currentStage=$currentStage, status=$status, requestType=${req['requestType']}');
+      }
+    }
     
     return allRequests;
   }

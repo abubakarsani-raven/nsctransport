@@ -8,12 +8,18 @@ import { MapsService } from '../maps/maps.service';
 import { OfficesService } from '../offices/offices.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../users/schemas/user.schema';
 import { NotificationType } from '../notifications/schemas/notification.schema';
 import { UpdateLocationDto } from './dto/update-location.dto';
 import { SchedulerRegistry } from '@nestjs/schedule';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { VehicleRequestStage } from '../workflow/workflow-definition';
 import { WorkflowAction } from '../workflow/schemas/workflow-actions.enum';
+import { VehicleDistanceService } from '../vehicles/vehicle-distance.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { LocationUpdatedEvent } from '../events/events';
+import { VehiclesService } from '../vehicles/vehicles.service';
+import { VehicleStatus } from '../vehicles/schemas/vehicle.schema';
 
 @Injectable()
 export class TripsService {
@@ -25,6 +31,9 @@ export class TripsService {
     private notificationsService: NotificationsService,
     private usersService: UsersService,
     private schedulerRegistry: SchedulerRegistry,
+    private vehicleDistanceService: VehicleDistanceService,
+    private eventEmitter: EventEmitter2,
+    private vehiclesService: VehiclesService,
   ) {}
 
   /**
@@ -59,16 +68,34 @@ export class TripsService {
       throw new NotFoundException('Pickup office not found');
     }
 
-    // Get destination address
+    // Get destination address and coordinates
     let destinationAddress = request.destination;
+    let destinationLat = request.destinationCoordinates?.lat || 0;
+    let destinationLng = request.destinationCoordinates?.lng || 0;
+
+    // If coordinates are provided, reverse geocode to get address
     if (request.destinationCoordinates) {
       try {
         destinationAddress = await this.mapsService.reverseGeocode(
           request.destinationCoordinates.lat,
           request.destinationCoordinates.lng,
         );
+        destinationLat = request.destinationCoordinates.lat;
+        destinationLng = request.destinationCoordinates.lng;
       } catch (error) {
         console.error('Failed to reverse geocode destination:', error);
+      }
+    } else if (request.destination && request.destination.trim().length > 0) {
+      // If coordinates are not provided but address is, geocode the address
+      try {
+        const geocoded = await this.mapsService.geocodeAddress(request.destination);
+        destinationLat = geocoded.lat;
+        destinationLng = geocoded.lng;
+        destinationAddress = request.destination; // Use the original address
+        console.log(`Geocoded destination "${request.destination}" to (${destinationLat}, ${destinationLng})`);
+      } catch (error) {
+        console.error('Failed to geocode destination address:', error);
+        // If geocoding fails, coordinates will remain 0, and client will need to geocode
       }
     }
 
@@ -80,10 +107,12 @@ export class TripsService {
         lat: pickupOffice.coordinates.lat,
         lng: pickupOffice.coordinates.lng,
         address: pickupOffice.address,
+        name: pickupOffice.name,
+        officeId: pickupOfficeId,
       },
       endLocation: {
-        lat: request.destinationCoordinates?.lat || 0,
-        lng: request.destinationCoordinates?.lng || 0,
+        lat: destinationLat,
+        lng: destinationLng,
         address: destinationAddress,
       },
       status: TripStatus.PENDING,
@@ -91,51 +120,60 @@ export class TripsService {
 
     const savedTrip = await trip.save();
 
-    // Schedule auto-start job
-    this.scheduleTripStart((savedTrip._id as any).toString(), new Date(request.startDate));
+    // DISABLED: Auto-start scheduling - trips should only be started by drivers manually
+    // This ensures trips enter IN_PROGRESS status only when driver starts them
+    // this.scheduleTripStart((savedTrip._id as any).toString(), new Date(request.startDate));
 
     return savedTrip;
   }
 
-  private scheduleTripStart(tripId: string, startDate: Date): void {
-    const now = new Date();
-    if (startDate <= now) {
-      // Start immediately if start date has passed
-      this.startTrip(tripId).catch(console.error);
-      return;
-    }
+  // DISABLED: Auto-start scheduling - trips should only be started by drivers manually
+  // private scheduleTripStart(tripId: string, startDate: Date): void {
+  //   const now = new Date();
+  //   if (startDate <= now) {
+  //     // Start immediately if start date has passed
+  //     this.startTrip(tripId).catch(console.error);
+  //     return;
+  //   }
 
-    const delay = startDate.getTime() - now.getTime();
-    const timeout = setTimeout(() => {
-      this.startTrip(tripId).catch(console.error);
-    }, delay);
+  //   const delay = startDate.getTime() - now.getTime();
+  //   const timeout = setTimeout(() => {
+  //     this.startTrip(tripId).catch(console.error);
+  //   }, delay);
 
-    this.schedulerRegistry.addTimeout(`trip-${tripId}`, timeout);
-  }
+  //   this.schedulerRegistry.addTimeout(`trip-${tripId}`, timeout);
+  // }
 
-  @Cron(CronExpression.EVERY_MINUTE)
-  async checkScheduledTrips(): Promise<void> {
-    const now = new Date();
-    const pendingTrips = await this.tripModel
-      .find({ status: TripStatus.PENDING })
-      .populate('requestId')
-      .exec();
+  // DISABLED: Auto-start cron job - trips should only be started by drivers manually
+  // This ensures trips enter IN_PROGRESS status only when driver starts them
+  // @Cron(CronExpression.EVERY_MINUTE)
+  // async checkScheduledTrips(): Promise<void> {
+  //   const now = new Date();
+  //   const pendingTrips = await this.tripModel
+  //     .find({ status: TripStatus.PENDING })
+  //     .populate('requestId')
+  //     .exec();
 
-    for (const trip of pendingTrips) {
-      const requestId = this.extractId(trip.requestId);
-      if (!requestId) continue;
+  //   for (const trip of pendingTrips) {
+  //     const requestId = this.extractId(trip.requestId);
+  //     if (!requestId) continue;
       
-      const request = await this.vehicleRequestService.findById(requestId);
-      if (request && new Date(request.startDate) <= now) {
-        await this.startTrip((trip._id as any).toString());
-      }
-    }
-  }
+  //     const request = await this.vehicleRequestService.findById(requestId);
+  //     if (request && new Date(request.startDate) <= now) {
+  //       await this.startTrip((trip._id as any).toString());
+  //     }
+  //   }
+  // }
 
-  async startTrip(tripId: string): Promise<TripDocument> {
+  async startTrip(tripId: string, driverId?: string): Promise<TripDocument> {
     const trip = await this.tripModel.findById(tripId).exec();
     if (!trip) {
       throw new NotFoundException('Trip not found');
+    }
+
+    // If driverId is provided, verify the driver is authorized to start this trip
+    if (driverId && trip.driverId.toString() !== driverId) {
+      throw new BadRequestException('You are not authorized to start this trip');
     }
 
     if (trip.status !== TripStatus.PENDING) {
@@ -162,7 +200,7 @@ export class TripsService {
         performedBy: trip.driverId.toString(),
         performedAt: new Date(),
         stage: VehicleRequestStage.ASSIGNED,
-        notes: 'Trip started automatically.',
+        notes: driverId ? 'Trip started by driver.' : 'Trip started.',
       });
       request.markModified('actionHistory');
       await request.save();
@@ -249,14 +287,37 @@ export class TripsService {
             if (distance <= 0.05) {
               // 50 meters in kilometers
             await this.markAsReturned(tripId);
-            return trip;
+            const savedTrip = await trip.save();
+            // Emit location update event for WebSocket broadcasting
+            this.eventEmitter.emit(
+              'location.updated',
+              new LocationUpdatedEvent(tripId, driverId, {
+                lat: locationDto.lat,
+                lng: locationDto.lng,
+                timestamp: new Date(),
+              }),
+            );
+            return savedTrip;
             }
           }
           }
       }
     }
 
-    return trip.save();
+    const savedTrip = await trip.save();
+    
+    // Emit location update event for WebSocket broadcasting
+    // This enables real-time tracking for admin/staff apps
+    this.eventEmitter.emit(
+      'location.updated',
+      new LocationUpdatedEvent(tripId, driverId, {
+        lat: locationDto.lat,
+        lng: locationDto.lng,
+        timestamp: new Date(),
+      }),
+    );
+    
+    return savedTrip;
   }
 
   async completeTrip(tripId: string, driverId: string): Promise<TripDocument> {
@@ -276,11 +337,35 @@ export class TripsService {
     trip.status = TripStatus.COMPLETED;
     trip.endTime = new Date();
 
-    // Calculate distance and duration
+    // Calculate duration (always calculate if we have startTime)
+    if (trip.startTime) {
+      trip.duration = (trip.endTime.getTime() - trip.startTime.getTime()) / (1000 * 60); // minutes
+    }
+
+    // Calculate distance and average speed from route
     if (trip.route.length > 0) {
       trip.distance = this.calculateRouteDistance(trip.route);
-      if (trip.startTime) {
-        trip.duration = (trip.endTime.getTime() - trip.startTime.getTime()) / (1000 * 60); // minutes
+      
+      // Calculate average speed (km/h) if we have both duration and distance
+      if (trip.duration && trip.duration > 0 && trip.distance && trip.distance > 0) {
+        const hours = trip.duration / 60; // Convert minutes to hours
+        trip.averageSpeed = trip.distance / hours;
+      }
+
+      // Log distance to vehicle
+      if (trip.distance && trip.distance > 0) {
+        try {
+          await this.vehicleDistanceService.logDistance(
+            trip.vehicleId.toString(),
+            trip.distance,
+            'trip',
+            tripId,
+            driverId,
+          );
+        } catch (error) {
+          // Log error but don't fail trip completion
+          console.error('Failed to log vehicle distance:', error);
+        }
       }
     }
 
@@ -294,6 +379,7 @@ export class TripsService {
       request.status = RequestStatus.COMPLETED;
       request.actualDistance = trip.distance;
       request.actualTime = trip.duration;
+      request.averageSpeed = trip.averageSpeed; // Save average speed to request
       request.currentStage = VehicleRequestStage.COMPLETED;
       if (!request.actionHistory) {
         request.actionHistory = [];
@@ -313,10 +399,11 @@ export class TripsService {
 
     // Notify requester
     if (request) {
-      const requester = await this.usersService.findById(request.requesterId.toString());
+      const requesterId = this.extractId(request.requesterId);
+      const requester = await this.usersService.findById(requesterId);
       if (requester) {
         await this.notificationsService.sendNotification(
-          request.requesterId.toString(),
+          requesterId,
           NotificationType.TRIP_COMPLETED,
           'Trip Completed',
           `Your trip for request ${(request._id as any).toString()} has been completed`,
@@ -328,11 +415,37 @@ export class TripsService {
       const participantIds = request.participantIds || [];
       if (participantIds.length > 0) {
         await this.notificationsService.sendNotificationToMultipleUsers(
-          participantIds.map(id => id.toString()),
+          participantIds.map(id => this.extractId(id)),
           NotificationType.TRIP_COMPLETED,
           'Trip Completed',
           `The trip you are participating in has been completed.`,
           (request._id as any).toString(),
+        );
+      }
+
+      // Notify DGS users
+      const dgsUsers = await this.usersService.findByRole(UserRole.DGS);
+      if (dgsUsers.length > 0) {
+        await this.notificationsService.sendNotificationToMultipleUsers(
+          dgsUsers.map(user => (user._id as any).toString()),
+          NotificationType.TRIP_COMPLETED,
+          'Trip Completed',
+          `Trip for request ${(request._id as any).toString()} has been completed by driver.`,
+          (trip._id as any).toString(),
+        );
+      }
+
+      // Notify Transport Officer (if assigned to the request)
+      // Note: Transport Officer assignment is typically in the approval chain or request metadata
+      // For now, we'll notify all Transport Officers
+      const transportOfficers = await this.usersService.findByRole(UserRole.TRANSPORT_OFFICER);
+      if (transportOfficers.length > 0) {
+        await this.notificationsService.sendNotificationToMultipleUsers(
+          transportOfficers.map(user => (user._id as any).toString()),
+          NotificationType.TRIP_COMPLETED,
+          'Trip Completed',
+          `Trip for request ${(request._id as any).toString()} has been completed by driver.`,
+          (trip._id as any).toString(),
         );
       }
     }
@@ -376,10 +489,11 @@ export class TripsService {
 
     // Notify requester
     if (request) {
-      const requester = await this.usersService.findById(request.requesterId.toString());
+      const requesterId = this.extractId(request.requesterId);
+      const requester = await this.usersService.findById(requesterId);
       if (requester) {
         await this.notificationsService.sendNotification(
-          request.requesterId.toString(),
+          requesterId,
           NotificationType.TRIP_RETURNED,
           'Trip Returned',
           `Your trip for request ${(request._id as any).toString()} has returned`,
@@ -391,7 +505,7 @@ export class TripsService {
       const participantIds = request.participantIds || [];
       if (participantIds.length > 0) {
         await this.notificationsService.sendNotificationToMultipleUsers(
-          participantIds.map(id => id.toString()),
+          participantIds.map(id => this.extractId(id)),
           NotificationType.TRIP_RETURNED,
           'Trip Returned',
           `The trip you are participating in has returned to the pickup location.`,
@@ -404,11 +518,121 @@ export class TripsService {
   }
 
   async findActive(): Promise<TripDocument[]> {
-    return this.tripModel.find({ status: TripStatus.IN_PROGRESS }).exec();
+    const trips = await this.tripModel.find({ status: TripStatus.IN_PROGRESS }).exec();
+    console.log(
+      `[TripsService] findActive -> count=${trips.length}, ids=${trips.map(t => (t._id as any).toString()).join(', ')}`,
+    );
+    return trips;
+  }
+
+  /**
+   * Admin utility: cancel all active or pending trips and mark vehicles available.
+   * This is intended for emergency/system reset scenarios.
+   */
+  async cancelAllActiveTrips(): Promise<{ cancelledTrips: number }> {
+    // Treat both IN_PROGRESS and PENDING as "active" for the purposes of this reset
+    const activeTrips = await this.tripModel
+      .find({ status: { $in: [TripStatus.IN_PROGRESS, TripStatus.PENDING] } })
+      .exec();
+
+    if (!activeTrips.length) {
+      return { cancelledTrips: 0 };
+    }
+
+    for (const trip of activeTrips) {
+      // Mark trip as returned (no dedicated CANCELLED status on Trip)
+      trip.status = TripStatus.RETURNED;
+      trip.returnTime = new Date();
+
+      // Best-effort: mark related request as cancelled in workflow
+      const requestId = this.extractId(trip.requestId);
+      if (requestId) {
+        try {
+          const request = await this.vehicleRequestService.findById(requestId);
+          if (request) {
+            request.status = RequestStatus.CANCELLED;
+            request.currentStage = VehicleRequestStage.CANCELLED;
+            if (!request.actionHistory) {
+              request.actionHistory = [];
+            }
+            request.actionHistory.push({
+              action: WorkflowAction.CANCEL,
+              performedBy: 'system',
+              performedAt: new Date(),
+              stage: request.currentStage,
+              notes: 'Bulk system cancellation of active trips',
+            } as any);
+            request.markModified('actionHistory');
+            await request.save();
+          }
+        } catch (err) {
+          // Log and continue – we still want to free vehicles/trips
+          console.error('Failed to mark request as cancelled for trip', trip._id, err);
+        }
+      }
+
+      // Mark vehicle as available again (ignoring maintenance/permanent assignment rules here)
+      const vehicleId = this.extractId(trip.vehicleId);
+      if (vehicleId) {
+        try {
+          await this.vehiclesService.updateStatus(vehicleId, VehicleStatus.AVAILABLE);
+        } catch (err) {
+          console.error('Failed to set vehicle available for trip', trip._id, err);
+        }
+      }
+
+      await trip.save();
+    }
+
+    return { cancelledTrips: activeTrips.length };
   }
 
   async findActiveByDriver(driverId: string): Promise<TripDocument[]> {
-    return this.tripModel.find({ driverId, status: TripStatus.IN_PROGRESS }).exec();
+    const trips = await this.tripModel.find({ driverId, status: TripStatus.IN_PROGRESS }).exec();
+    console.log(
+      `[TripsService] findActiveByDriver driverId=${driverId} -> count=${trips.length}, ids=${trips.map(t => (t._id as any).toString()).join(', ')}`,
+    );
+    return trips;
+  }
+
+  async findCompletedByDriver(driverId: string): Promise<TripDocument[]> {
+    return this.tripModel
+      .find({
+        driverId,
+        status: { $in: [TripStatus.COMPLETED, TripStatus.RETURNED] },
+      })
+      .populate('requestId', 'destination startDate endDate requesterId participantIds assignedVehicleId actionHistory')
+      .populate('requestId.requesterId', 'name email phone department')
+      .populate('requestId.assignedVehicleId', 'make model plateNumber capacity year')
+      .populate('vehicleId', 'make model plateNumber capacity year')
+      .populate('requestId.participantIds', 'name email phone department')
+      .sort({ endTime: -1 }) // Most recent first
+      .exec();
+  }
+
+  async findUpcomingByDriver(driverId: string): Promise<TripDocument[]> {
+    const now = new Date();
+    const base = await this.tripModel
+      .find({
+        driverId,
+        status: TripStatus.PENDING,
+      })
+      .populate('requestId')
+      .exec();
+
+    const filtered = base.filter((trip) => {
+      const request = trip.requestId as any;
+      if (request && request.startDate) {
+        return new Date(request.startDate) > now;
+      }
+      return false;
+    });
+
+    console.log(
+      `[TripsService] findUpcomingByDriver driverId=${driverId} -> pending=${base.length}, upcoming=${filtered.length}, ids=${filtered.map(t => (t._id as any).toString()).join(', ')}`,
+    );
+
+    return filtered;
   }
 
   async findActiveByVehicle(vehicleId: string): Promise<TripDocument[]> {
@@ -419,16 +643,241 @@ export class TripsService {
     return this.tripModel.findOne({ requestId }).exec();
   }
 
-  async getTrackingData(tripId: string): Promise<TripDocument> {
-    const trip = await this.tripModel.findById(tripId).exec();
+  /**
+   * Find trips for a driver whose planned/actual time window overlaps the given [startDate, endDate].
+   * A trip is considered overlapping if:
+   *  - Its actual [startTime, endTime] window intersects [startDate, endDate], OR
+   *  - It is pending and its request's [startDate, endDate] window intersects [startDate, endDate].
+   */
+  async findByDriverAndTimeWindow(
+    driverId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<TripDocument[]> {
+    // First, find trips for this driver
+    const trips = await this.tripModel
+      .find({ driverId })
+      .populate('requestId', 'startDate endDate')
+      .exec();
+
+    const windowStart = startDate.getTime();
+    const windowEnd = endDate.getTime();
+
+    return trips.filter((trip) => {
+      // Determine this trip's time window
+      let tripStart: number | null = null;
+      let tripEnd: number | null = null;
+
+      if (trip.startTime && trip.endTime) {
+        tripStart = trip.startTime.getTime();
+        tripEnd = trip.endTime.getTime();
+      } else {
+        const req: any = trip.requestId;
+        if (req && req.startDate && req.endDate) {
+          tripStart = new Date(req.startDate).getTime();
+          tripEnd = new Date(req.endDate).getTime();
+        }
+      }
+
+      if (tripStart == null || tripEnd == null) {
+        return false;
+      }
+
+      // Overlap if existingStart < end && existingEnd > start
+      return tripStart < windowEnd && tripEnd > windowStart;
+    });
+  }
+
+  /**
+   * Same as findByDriverAndTimeWindow but for vehicles.
+   */
+  async findByVehicleAndTimeWindow(
+    vehicleId: string,
+    startDate: Date,
+    endDate: Date,
+  ): Promise<TripDocument[]> {
+    const trips = await this.tripModel
+      .find({ vehicleId })
+      .populate('requestId', 'startDate endDate')
+      .exec();
+
+    const windowStart = startDate.getTime();
+    const windowEnd = endDate.getTime();
+
+    return trips.filter((trip) => {
+      let tripStart: number | null = null;
+      let tripEnd: number | null = null;
+
+      if (trip.startTime && trip.endTime) {
+        tripStart = trip.startTime.getTime();
+        tripEnd = trip.endTime.getTime();
+      } else {
+        const req: any = trip.requestId;
+        if (req && req.startDate && req.endDate) {
+          tripStart = new Date(req.startDate).getTime();
+          tripEnd = new Date(req.endDate).getTime();
+        }
+      }
+
+      if (tripStart == null || tripEnd == null) {
+        return false;
+      }
+
+      return tripStart < windowEnd && tripEnd > windowStart;
+    });
+  }
+
+  async getTrackingDataForUser(
+    tripId: string,
+    userId: string,
+    roles: UserRole[] = [],
+  ): Promise<TripDocument> {
+    const trip = await this.tripModel
+      .findById(tripId)
+      .populate(
+        'requestId',
+        'destination startDate endDate requesterId participantIds assignedVehicleId actionHistory',
+      )
+      .populate('requestId.requesterId', 'name email phone department')
+      .populate('requestId.assignedVehicleId', 'make model plateNumber capacity year')
+      .populate('vehicleId', 'make model plateNumber capacity year')
+      .populate('requestId.participantIds', 'name email phone department')
+      .exec();
+
     if (!trip) {
       throw new NotFoundException('Trip not found');
     }
+
+    const isAssignedDriver = trip.driverId.toString() === userId;
+    const isPrivilegedUser = roles.some((role) =>
+      [
+        UserRole.ADMIN,
+        UserRole.DGS,
+        UserRole.DDGS,
+        UserRole.AD_TRANSPORT,
+        UserRole.TRANSPORT_OFFICER,
+      ].includes(role),
+    );
+
+    if (!isAssignedDriver && !isPrivilegedUser) {
+      // Hide existence of the trip from unauthorized drivers
+      throw new NotFoundException('Trip not found');
+    }
+
     return trip;
   }
 
   async updateDriver(requestId: string, newDriverId: string): Promise<void> {
     await this.tripModel.updateOne({ requestId }, { driverId: newDriverId }).exec();
+  }
+
+  async batchUpdateLocation(
+    tripId: string,
+    driverId: string,
+    locations: Array<{ lat: number; lng: number; timestamp: string }>,
+  ): Promise<TripDocument> {
+    const trip = await this.tripModel.findById(tripId).exec();
+    if (!trip) {
+      throw new NotFoundException('Trip not found');
+    }
+
+    if (trip.driverId.toString() !== driverId) {
+      throw new BadRequestException('You are not authorized to update this trip');
+    }
+
+    if (trip.status !== TripStatus.IN_PROGRESS && trip.status !== TripStatus.COMPLETED) {
+      throw new BadRequestException('Trip is not in progress or completed');
+    }
+
+    // Add all locations to route
+    for (const loc of locations) {
+      trip.route.push({
+        lat: loc.lat,
+        lng: loc.lng,
+        timestamp: new Date(loc.timestamp),
+      });
+    }
+
+    // Update current location to last location
+    let lastLocation: { lat: number; lng: number; timestamp: Date } | null = null;
+    if (locations.length > 0) {
+      const lastLoc = locations[locations.length - 1];
+      trip.startLocation = {
+        ...trip.startLocation,
+        lat: lastLoc.lat,
+        lng: lastLoc.lng,
+      };
+      lastLocation = {
+        lat: lastLoc.lat,
+        lng: lastLoc.lng,
+        timestamp: new Date(lastLoc.timestamp),
+      };
+    }
+
+    const savedTrip = await trip.save();
+    
+    // Emit location update event for WebSocket broadcasting
+    // This enables real-time tracking for admin/staff apps
+    if (lastLocation) {
+      this.eventEmitter.emit(
+        'location.updated',
+        new LocationUpdatedEvent(tripId, driverId, lastLocation),
+      );
+    }
+    
+    return savedTrip;
+  }
+
+  async getTripMetrics(tripId: string): Promise<any> {
+    const trip = await this.tripModel.findById(tripId).exec();
+    if (!trip) {
+      throw new NotFoundException('Trip not found');
+    }
+
+    const distance = trip.distance || (trip.route.length > 0 ? this.calculateRouteDistance(trip.route) : 0);
+    let duration = trip.duration || 0;
+    let averageSpeed = trip.averageSpeed || 0;
+    let maxSpeed = 0;
+
+    // Calculate duration if not already stored
+    if (duration === 0) {
+      if (trip.startTime && trip.endTime) {
+        duration = (trip.endTime.getTime() - trip.startTime.getTime()) / (1000 * 60); // minutes
+      } else if (trip.startTime) {
+        duration = (new Date().getTime() - trip.startTime.getTime()) / (1000 * 60); // minutes
+      }
+    }
+
+    // Calculate average speed if not already stored
+    if (averageSpeed === 0 && duration > 0 && distance > 0) {
+      const hours = duration / 60;
+      averageSpeed = hours > 0 ? distance / hours : 0;
+    }
+
+    // Calculate max speed from route
+    if (trip.route.length >= 2) {
+      for (let i = 1; i < trip.route.length; i++) {
+        const segmentDistance = this.calculateDistance(trip.route[i - 1], trip.route[i]);
+        const timeDiff = trip.route[i].timestamp.getTime() - trip.route[i - 1].timestamp.getTime();
+        if (timeDiff > 0) {
+          const hours = timeDiff / (1000 * 3600);
+          const speed = hours > 0 ? segmentDistance / hours : 0;
+          if (speed > maxSpeed) {
+            maxSpeed = speed;
+          }
+        }
+      }
+    }
+
+    return {
+      distance,
+      duration,
+      averageSpeed,
+      maxSpeed,
+      routePoints: trip.route.length,
+      startTime: trip.startTime,
+      endTime: trip.endTime,
+    };
   }
 
   private calculateDistance(point1: { lat: number; lng: number }, point2: { lat: number; lng: number }): number {

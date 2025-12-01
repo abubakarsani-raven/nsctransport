@@ -121,7 +121,27 @@ class RequestsProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> assignDriverAndVehicle({
+  Future<List<dynamic>> getAvailableDriversForRequest(String requestId) async {
+    try {
+      return await _apiService.getAvailableDriversForRequest(requestId);
+    } catch (e) {
+      debugPrint('Error fetching available drivers for request: $e');
+      return [];
+    }
+  }
+
+  Future<List<dynamic>> getAvailableVehiclesForRequest(String requestId) async {
+    try {
+      return await _apiService.getAvailableVehiclesForRequest(requestId);
+    } catch (e) {
+      debugPrint('Error fetching available vehicles for request: $e');
+      return [];
+    }
+  }
+
+  /// Assign driver & vehicle.
+  /// Returns `null` on success, or an error message string on failure.
+  Future<String?> assignDriverAndVehicle({
     required String requestId,
     required String driverId,
     required String vehicleId,
@@ -135,10 +155,10 @@ class RequestsProvider with ChangeNotifier {
         pickupOfficeId: pickupOfficeId,
       );
       await loadRequests();
-      return true;
+      return null;
     } catch (e) {
       debugPrint('Error assigning driver/vehicle: $e');
-      return false;
+      return e.toString();
     }
   }
 }

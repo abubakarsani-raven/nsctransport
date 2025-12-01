@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import 'dashboard_screen.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -32,9 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (success && mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const DashboardScreen()),
-        );
+        // Navigate to the main dashboard shell which provides the drawer
+        Navigator.of(context).pushReplacementNamed('/dashboard');
       } else if (mounted) {
         // Error message is shown via Consumer below
       }

@@ -205,3 +205,8 @@ NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 - Vercel automatically sets `VERCEL_URL` environment variable
 - Environment variables prefixed with `NEXT_PUBLIC_` are exposed to the browser
 
+
+
+
+
+

@@ -54,6 +54,70 @@ export class AssignmentsService {
     return availableVehicles;
   }
 
+  /**
+   * Get drivers who have no trips overlapping the given [startDate, endDate] window.
+   */
+  async getAvailableDriversForWindow(
+    startDate: Date,
+    endDate: Date,
+  ): Promise<UserDocument[]> {
+    const drivers = await this.usersService.findDrivers();
+    const available: UserDocument[] = [];
+
+    for (const driver of drivers) {
+      const driverId = (driver._id as any).toString();
+      const overlappingTrips = await this.tripsService.findByDriverAndTimeWindow(
+        driverId,
+        startDate,
+        endDate,
+      );
+      if (overlappingTrips.length === 0) {
+        available.push(driver);
+      }
+    }
+
+    return available;
+  }
+
+  /**
+   * Get vehicles that are capacity-compatible AND have no trips overlapping [startDate, endDate].
+   * Vehicle capacity check still uses the request, so this method is only used via
+   * request-aware endpoints where we already know the request.
+   */
+  async getAvailableVehiclesForWindow(
+    startDate: Date,
+    endDate: Date,
+    passengerCount?: number,
+  ): Promise<VehicleDocument[]> {
+    const vehicles = await this.vehiclesService.findAvailable();
+    const available: VehicleDocument[] = [];
+
+    for (const vehicle of vehicles) {
+      const vehicleId = (vehicle._id as any).toString();
+
+      // Respect permanent assignment rule
+      if (vehicle.status === VehicleStatus.PERMANENTLY_ASSIGNED) {
+        continue;
+      }
+
+      // Capacity check if passengerCount is provided
+      if (typeof passengerCount === 'number' && vehicle.capacity < passengerCount) {
+        continue;
+      }
+
+      const overlappingTrips = await this.tripsService.findByVehicleAndTimeWindow(
+        vehicleId,
+        startDate,
+        endDate,
+      );
+      if (overlappingTrips.length === 0) {
+        available.push(vehicle);
+      }
+    }
+
+    return available;
+  }
+
   async assignDriverAndVehicle(
     requestId: string,
     assignDto: AssignDriverVehicleDto,
@@ -139,6 +203,9 @@ export class AssignmentsService {
       throw new NotFoundException('Pickup office not found');
     }
 
+    // Check if there's an existing driver assignment (for reassignment notification)
+    const oldDriverId = request.assignedDriverId ? this.normalizeId(request.assignedDriverId) : null;
+
     // Update request
     request.assignedDriverId = driverId;
     request.assignedVehicleId = vehicleId;
@@ -186,12 +253,28 @@ export class AssignmentsService {
     // Create trip
     await this.tripsService.createFromRequest(request);
 
-    // Notify driver
+    // Notify old driver if they were reassigned
+    if (oldDriverId && oldDriverId !== driverId) {
+      const oldDriver = await this.usersService.findById(oldDriverId);
+      if (oldDriver) {
+        await this.notificationsService.sendNotification(
+          oldDriverId,
+          NotificationType.DRIVER_ASSIGNED,
+          'Trip Reassignment',
+          `You have been unassigned from the trip for request ${(request._id as any).toString()}`,
+          (request._id as any).toString(),
+        );
+      }
+    }
+
+    // Notify new driver
     await this.notificationsService.sendNotification(
       driverId,
       NotificationType.DRIVER_ASSIGNED,
-      'New Trip Assigned',
-      `You have been assigned to a trip for request ${(request._id as any).toString()}`,
+      oldDriverId && oldDriverId !== driverId ? 'Trip Reassignment' : 'New Trip Assigned',
+      oldDriverId && oldDriverId !== driverId
+        ? `You have been reassigned to a trip for request ${(request._id as any).toString()}`
+        : `You have been assigned to a trip for request ${(request._id as any).toString()}`,
       (request._id as any).toString(),
     );
 

@@ -22,3 +22,11 @@ export class HistoryUpdatedEvent {
   constructor(public requestId: string) {}
 }
 
+export class LocationUpdatedEvent {
+  constructor(
+    public tripId: string,
+    public driverId: string,
+    public location: { lat: number; lng: number; timestamp: Date },
+  ) {}
+}
+

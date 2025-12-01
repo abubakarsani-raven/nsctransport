@@ -32,6 +32,22 @@ export class VehicleRequestService {
   ) {}
 
   /**
+   * Estimate fuel consumption in litres based on distance (km) and a simple km-per-litre value.
+   * This is intentionally conservative and can be refined later per-vehicle.
+   */
+  private calculateEstimatedFuelLitres(distanceKm?: number, kmPerLitre = 10): number | undefined {
+    if (distanceKm === undefined || distanceKm === null) {
+      return undefined;
+    }
+    if (distanceKm <= 0 || kmPerLitre <= 0) {
+      return undefined;
+    }
+    const litres = distanceKm / kmPerLitre;
+    // Round to 2 decimal places for nicer display
+    return Math.round(litres * 100) / 100;
+  }
+
+  /**
    * Map workflow stage to status for backward compatibility
    */
   private mapStageToStatus(stage: string): RequestStatus {
@@ -252,12 +268,14 @@ export class VehicleRequestService {
     }
 
     // Calculate estimated distance if destination coordinates are provided
+    // Use destinationCoordinates if provided, otherwise use coordinates
+    const destCoords = createRequestDto.destinationCoordinates || createRequestDto.coordinates;
     let estimatedDistance: number | undefined;
-    if (createRequestDto.destinationCoordinates) {
+    if (destCoords && originOffice.coordinates) {
       try {
         const distanceResult = await this.mapsService.calculateDistance(
           originOffice.coordinates,
-          createRequestDto.destinationCoordinates,
+          destCoords,
         );
         estimatedDistance = distanceResult.distance;
       } catch (error) {
@@ -346,13 +364,22 @@ export class VehicleRequestService {
       currentStage: initialStage,
       status: initialStatus,
       estimatedDistance,
+      estimatedFuelLitres: this.calculateEstimatedFuelLitres(estimatedDistance),
       actionHistory: [],
       correctionHistory: [],
       approvalChain: [],
     };
 
+    // Set destinationCoordinates if provided
     if (createRequestDto.destinationCoordinates) {
       requestData.destinationCoordinates = createRequestDto.destinationCoordinates;
+      // Automatically set coordinates to destinationCoordinates
+      requestData.coordinates = createRequestDto.destinationCoordinates;
+    } else if (createRequestDto.coordinates) {
+      // If only coordinates is provided (without destinationCoordinates), use it for coordinates
+      requestData.coordinates = createRequestDto.coordinates;
+      // Also set destinationCoordinates to the same value
+      requestData.destinationCoordinates = createRequestDto.coordinates;
     }
 
     if (supervisorIdToStore) {
@@ -716,8 +743,15 @@ export class VehicleRequestService {
     if (updateDto.destination !== undefined) {
       request.destination = updateDto.destination;
     }
+    // Update destinationCoordinates and coordinates together
     if (updateDto.destinationCoordinates !== undefined) {
       request.destinationCoordinates = updateDto.destinationCoordinates;
+      // Automatically update coordinates to match destinationCoordinates
+      request.coordinates = updateDto.destinationCoordinates;
+    } else if (updateDto.coordinates !== undefined) {
+      // If only coordinates is provided, update both fields
+      request.coordinates = updateDto.coordinates;
+      request.destinationCoordinates = updateDto.coordinates;
     }
     if (updateDto.startDate !== undefined) {
       request.startDate = new Date(updateDto.startDate);
@@ -748,19 +782,34 @@ export class VehicleRequestService {
       request.supervisorId = updateDto.supervisorId || undefined;
     }
 
-    // Recalculate distance if destination changed
-    if (updateDto.destination !== undefined && updateDto.destinationCoordinates) {
+    // Recalculate distance if destination or coordinates changed
+    // Use destinationCoordinates if provided, otherwise use coordinates, or existing values
+    const destinationCoords = updateDto.destinationCoordinates ||
+      updateDto.coordinates ||
+      request.destinationCoordinates ||
+      request.coordinates;
+
+    if (
+      (updateDto.destination !== undefined ||
+        updateDto.destinationCoordinates !== undefined ||
+        updateDto.coordinates !== undefined) &&
+      destinationCoords
+    ) {
       try {
-        const originOfficeId = updateDto.originOffice !== undefined 
-          ? updateDto.originOffice 
-          : request.originOffice.toString();
+        const originOfficeId =
+          updateDto.originOffice !== undefined
+            ? updateDto.originOffice
+            : request.originOffice.toString();
         const originOffice = await this.officesService.findById(originOfficeId);
         if (originOffice && originOffice.coordinates) {
           const distanceResult = await this.mapsService.calculateDistance(
             originOffice.coordinates,
-            updateDto.destinationCoordinates,
+            destinationCoords,
           );
           request.estimatedDistance = distanceResult.distance;
+          request.estimatedFuelLitres = this.calculateEstimatedFuelLitres(
+            request.estimatedDistance,
+          );
         }
       } catch (error) {
         console.error('[RequestsService] Error calculating distance:', error);
@@ -1246,6 +1295,52 @@ export class VehicleRequestService {
       default:
         return null;
     }
+  }
+
+  /**
+   * Temporary method to add coordinates to an existing vehicle request
+   * @param requestId - The ID of the vehicle request
+   * @param coordinates - The coordinates to add (lat, lng)
+   * @returns The updated vehicle request
+   */
+  async addCoordinates(requestId: string, coordinates: { lat: number; lng: number }): Promise<VehicleRequestDocument> {
+    const request = await this.requestModel.findById(requestId);
+    if (!request) {
+      throw new NotFoundException('Vehicle request not found');
+    }
+
+    // Set both coordinates and destinationCoordinates to the same value
+    request.coordinates = coordinates;
+    request.destinationCoordinates = coordinates;
+    return request.save();
+  }
+
+  /**
+   * Temporary method to batch add coordinates to multiple vehicle requests
+   * @param requests - Array of requestId and coordinates pairs
+   * @returns Summary of successful and failed updates
+   */
+  async batchAddCoordinates(
+    requests: Array<{ requestId: string; coordinates: { lat: number; lng: number } }>,
+  ): Promise<{ success: number; failed: number; errors: any[] }> {
+    let success = 0;
+    let failed = 0;
+    const errors: any[] = [];
+
+    for (const item of requests) {
+      try {
+        await this.addCoordinates(item.requestId, item.coordinates);
+        success++;
+      } catch (error) {
+        failed++;
+        errors.push({
+          requestId: item.requestId,
+          error: error.message,
+        });
+      }
+    }
+
+    return { success, failed, errors };
   }
 }
 

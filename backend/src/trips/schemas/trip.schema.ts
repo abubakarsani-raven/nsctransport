@@ -64,6 +64,9 @@ export class Trip {
   @Prop()
   duration?: number;
 
+  @Prop()
+  averageSpeed?: number; // Average speed in km/h
+
   @Prop({
     type: [
       {

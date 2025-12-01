@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
+import { Autocomplete, useLoadScript } from "@react-google-maps/api";
 
 type Office = { 
   _id: string; 
@@ -29,6 +30,13 @@ async function fetchJSON<T>(url: string): Promise<T> {
 export default function OfficesPage() {
   const qc = useQueryClient();
   const { success, error } = useToast();
+  const { isLoaded: isMapsLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY as string,
+    libraries: ["places"],
+  });
+
+  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+
   const { data: offices = [], isLoading } = useQuery<Office[]>({ queryKey: ["offices"], queryFn: () => fetchJSON<Office[]>("/api/offices") });
 
   const [showCreate, setShowCreate] = useState(false);
@@ -150,12 +158,41 @@ export default function OfficesPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="address">Address *</Label>
+                    {isMapsLoaded ? (
+                      <Autocomplete
+                        onLoad={(autocomplete) => {
+                          autocompleteRef.current = autocomplete;
+                        }}
+                        onPlaceChanged={() => {
+                          const place = autocompleteRef.current?.getPlace();
+                          if (!place || !place.geometry || !place.geometry.location) return;
+
+                          const lat = place.geometry.location.lat();
+                          const lng = place.geometry.location.lng();
+
+                          setForm((prev) => ({
+                            ...prev,
+                            address: place.formatted_address || prev.address,
+                            lat: lat.toString(),
+                            lng: lng.toString(),
+                          }));
+                        }}
+                      >
+                        <Input
+                          id="address"
+                          placeholder="123 Main Street, City"
+                          value={form.address}
+                          onChange={(e) => setForm({ ...form, address: e.target.value })}
+                        />
+                      </Autocomplete>
+                    ) : (
                     <Input
                       id="address"
                       placeholder="123 Main Street, City"
                       value={form.address}
                       onChange={(e) => setForm({ ...form, address: e.target.value })}
                     />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -282,12 +319,41 @@ export default function OfficesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-address">Address *</Label>
+              {isMapsLoaded ? (
+                <Autocomplete
+                  onLoad={(autocomplete) => {
+                    autocompleteRef.current = autocomplete;
+                  }}
+                  onPlaceChanged={() => {
+                    const place = autocompleteRef.current?.getPlace();
+                    if (!place || !place.geometry || !place.geometry.location) return;
+
+                    const lat = place.geometry.location.lat();
+                    const lng = place.geometry.location.lng();
+
+                    setForm((prev) => ({
+                      ...prev,
+                      address: place.formatted_address || prev.address,
+                      lat: lat.toString(),
+                      lng: lng.toString(),
+                    }));
+                  }}
+                >
+                  <Input
+                    id="edit-address"
+                    placeholder="123 Main Street, City"
+                    value={form.address}
+                    onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  />
+                </Autocomplete>
+              ) : (
               <Input
                 id="edit-address"
                 placeholder="123 Main Street, City"
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
               />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

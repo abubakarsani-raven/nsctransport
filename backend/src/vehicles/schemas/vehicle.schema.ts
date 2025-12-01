@@ -63,6 +63,18 @@ export class Vehicle {
 
   @Prop()
   permanentAssignmentNotes?: string;
+
+  @Prop({ default: 0 })
+  totalDistanceTravelled?: number; // Total distance in kilometers (cumulative)
+
+  @Prop()
+  initialOdometerReading?: number; // Initial odometer when vehicle was added
+
+  @Prop()
+  lastOdometerUpdate?: Date; // Last time distance was updated
+
+  @Prop()
+  lastRecordedDistance?: number; // Last recorded distance value
 }
 
 export const VehicleSchema = SchemaFactory.createForClass(Vehicle);
