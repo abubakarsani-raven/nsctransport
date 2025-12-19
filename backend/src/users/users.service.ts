@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcrypt';
 import { User, UserDocument, UserRole } from './schemas/user.schema';
 import { Trip, TripDocument, TripStatus } from '../trips/schemas/trip.schema';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -84,7 +85,14 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: any): Promise<UserDocument> {
-    const user = await this.userModel.findByIdAndUpdate(id, updateUserDto, { new: true }).exec();
+    const updateData: any = { ...updateUserDto };
+
+    // If password is being updated, hash it before saving
+    if (updateData.password) {
+      updateData.password = await bcrypt.hash(updateData.password, 10);
+    }
+
+    const user = await this.userModel.findByIdAndUpdate(id, updateData, { new: true }).exec();
     if (!user) {
       throw new NotFoundException('User not found');
     }

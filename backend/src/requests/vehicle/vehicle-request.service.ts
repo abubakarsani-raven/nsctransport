@@ -33,9 +33,9 @@ export class VehicleRequestService {
 
   /**
    * Estimate fuel consumption in litres based on distance (km) and a simple km-per-litre value.
-   * This is intentionally conservative and can be refined later per-vehicle.
+   * Default assumes a conservative ~16 mpg (≈ 6.8 km/l) worst-case.
    */
-  private calculateEstimatedFuelLitres(distanceKm?: number, kmPerLitre = 10): number | undefined {
+  private calculateEstimatedFuelLitres(distanceKm?: number, kmPerLitre = 6.8): number | undefined {
     if (distanceKm === undefined || distanceKm === null) {
       return undefined;
     }

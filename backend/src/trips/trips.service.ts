@@ -555,9 +555,10 @@ export class TripsService {
             if (!request.actionHistory) {
               request.actionHistory = [];
             }
+            // Use a null performedBy to avoid invalid ObjectId casts
             request.actionHistory.push({
               action: WorkflowAction.CANCEL,
-              performedBy: 'system',
+              performedBy: null,
               performedAt: new Date(),
               stage: request.currentStage,
               notes: 'Bulk system cancellation of active trips',

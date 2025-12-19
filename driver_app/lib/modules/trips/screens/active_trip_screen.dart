@@ -502,13 +502,42 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
       }
     } else {
       debugPrint('ActiveTripScreen: Failed to start trip tracking');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to start trip tracking')),
+        );
+      }
+      return;
     }
 
     // Start location tracking
-    await locationProvider.startTracking(tripId: widget.tripId);
+    final locationStarted = await locationProvider.startTracking(tripId: widget.tripId);
+    if (!locationStarted) {
+      debugPrint('ActiveTripScreen: Failed to start location tracking');
+      await tripTrackingProvider.stopTrip();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to start location tracking')),
+        );
+      }
+      return;
+    }
 
     // Start API trip
-    await tripsProvider.startTrip(widget.tripId);
+    try {
+      await tripsProvider.startTrip(widget.tripId);
+    } catch (e) {
+      debugPrint('ActiveTripScreen: Failed to start trip on server: $e');
+      // Roll back local tracking so UI stays consistent with backend
+      await locationProvider.startTracking(tripId: null);
+      await tripTrackingProvider.stopTrip();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start trip: ${e.toString()}')),
+        );
+      }
+      return;
+    }
     
     // Load and display the planned route from DirectionsService when tracking starts
     // This ensures the user sees the correct route following roads, not a straight line

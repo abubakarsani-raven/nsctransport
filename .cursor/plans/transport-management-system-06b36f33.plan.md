@@ -1,4 +1,42 @@
-<!-- 06b36f33-f8f5-45a0-ad8a-520b05beebaa ca5e802b-c579-4b94-8e60-33b2168e2e40 -->
+---
+name: Next.js Admin Dashboard Migration Plan
+overview: ""
+todos:
+  - id: ea2ebf6c-112a-4e09-b04e-3d212d2dba69
+    content: Initialize Next.js 15 app with Tailwind and shadcn/ui
+    status: pending
+  - id: 694c1ace-f623-4595-8a71-631622bc742e
+    content: Create responsive sidebar layout and protected routes middleware
+    status: pending
+  - id: c05fedfe-d1c9-4857-b971-fc296d8b91fc
+    content: Implement login/logout with HTTP-only cookies and profile hydration
+    status: pending
+  - id: 9562b49e-7d64-42d6-80aa-965624c24915
+    content: Set up Axios client, React Query, DTO types
+    status: pending
+  - id: 129bd13e-6e07-4e6a-a4c2-db4c2af5ceda
+    content: Build dashboard stats with React Query
+    status: pending
+  - id: d21f5c99-f513-440d-b682-286d0f5fba28
+    content: Implement requests table, filters, approve/reject, assign dialog
+    status: pending
+  - id: 1ef08fd6-697c-4ca1-9cc7-73d7c98c1fc4
+    content: Implement vehicles table, create/edit vehicle forms
+    status: pending
+  - id: 0a6a9d99-672f-4eeb-8ab5-f36803d53625
+    content: Implement users tabs, convert staff to driver, create driver
+    status: pending
+  - id: 94fa5d9e-9b2e-4090-9d56-bcd3222c6184
+    content: Implement offices CRUD
+    status: pending
+  - id: 0e651154-3013-4470-a2b4-36b6164282c5
+    content: Implement live tracking with Socket.IO and Google Maps JS
+    status: pending
+  - id: cfd48491-b2df-409e-ab8b-e9b9678df844
+    content: Add toasts, error/loading states, responsiveness, README
+    status: pending
+---
+
 # Next.js Admin Dashboard Migration Plan
 
 ## Scope and Decisions
@@ -111,17 +149,3 @@
 - CRUD flows for vehicles/users/offices
 - Requests workflow actions
 - Responsive sidebar and tables
-
-### To-dos
-
-- [ ] Initialize Next.js 15 app with Tailwind and shadcn/ui
-- [ ] Create responsive sidebar layout and protected routes middleware
-- [ ] Implement login/logout with HTTP-only cookies and profile hydration
-- [ ] Set up Axios client, React Query, DTO types
-- [ ] Build dashboard stats with React Query
-- [ ] Implement requests table, filters, approve/reject, assign dialog
-- [ ] Implement vehicles table, create/edit vehicle forms
-- [ ] Implement users tabs, convert staff to driver, create driver
-- [ ] Implement offices CRUD
-- [ ] Implement live tracking with Socket.IO and Google Maps JS
-- [ ] Add toasts, error/loading states, responsiveness, README

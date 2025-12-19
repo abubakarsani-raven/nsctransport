@@ -85,6 +85,8 @@ class TripsProvider with ChangeNotifier {
       await loadTrips();
     } catch (e) {
       debugPrint('Error starting trip: $e');
+      // Re-throw so UI layers can handle errors (e.g. show SnackBar)
+      rethrow;
     }
   }
 

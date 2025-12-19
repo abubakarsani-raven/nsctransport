@@ -380,11 +380,27 @@ class ApiService {
       headers: await _getHeaders(),
     );
 
+    // Treat 200 as success, 204/404 as "no requests", and log other errors
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to get vehicle requests');
     }
+
+    if (response.statusCode == 204 || response.statusCode == 404) {
+      debugPrint(
+        'getVehicleRequests: no requests found '
+        '(status ${response.statusCode})',
+      );
+      return [];
+    }
+
+    // Log details to help with debugging (e.g. 401/500)
+    debugPrint(
+      'getVehicleRequests error: '
+      'status=${response.statusCode}, '
+      'body=${response.body}',
+    );
+
+    throw Exception('Failed to get vehicle requests');
   }
 
   Future<Map<String, dynamic>> getVehicleRequest(String id) async {

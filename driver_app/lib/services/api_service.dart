@@ -107,11 +107,26 @@ class ApiService {
   }
 
   Future<void> startTrip(String tripId) async {
-    await http.post(
+    final response = await http.post(
       Uri.parse('$baseUrl/trips/start'),
       headers: await _getHeaders(),
       body: jsonEncode({'tripId': tripId}),
     );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      String errorMessage = 'Failed to start trip';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['message'] != null) {
+          errorMessage = body['message'].toString();
+        } else {
+          errorMessage = response.body;
+        }
+      } catch (_) {
+        errorMessage = response.body;
+      }
+      throw Exception(errorMessage);
+    }
   }
 
   Future<void> completeTrip(String tripId) async {
