@@ -88,9 +88,24 @@ export class UsersService {
     const updateData: any = { ...updateUserDto };
 
     // If password is being updated, hash it before saving
-    if (updateData.password) {
-      updateData.password = await bcrypt.hash(updateData.password, 10);
+    // Check for both existence and non-empty string to ensure we only hash when password is actually provided
+    if (updateData.password !== undefined && updateData.password !== null && updateData.password !== '') {
+      // Only hash if it's not already hashed (bcrypt hashes always start with $2a$, $2b$, or $2y$)
+      const passwordStr = String(updateData.password);
+      if (!passwordStr.startsWith('$2a$') && !passwordStr.startsWith('$2b$') && !passwordStr.startsWith('$2y$')) {
+        console.log(`[UsersService] Hashing password for user ${id}`);
+        updateData.password = await bcrypt.hash(passwordStr, 10);
+        console.log(`[UsersService] Password hashed successfully for user ${id}`);
+      } else {
+        console.log(`[UsersService] Password already hashed for user ${id}, skipping re-hash`);
+      }
+    } else {
+      // Remove password from update if it's empty/null/undefined to avoid clearing the password
+      console.log(`[UsersService] No password provided in update for user ${id}, keeping existing password`);
+      delete updateData.password;
     }
+
+    console.log(`[UsersService] Updating user ${id} with data:`, { ...updateData, password: updateData.password ? '[HIDDEN]' : undefined });
 
     const user = await this.userModel.findByIdAndUpdate(id, updateData, { new: true }).exec();
     if (!user) {
@@ -100,6 +115,7 @@ export class UsersService {
     // Emit user updated event
     this.eventEmitter.emit('user.updated', new UserUpdatedEvent());
     
+    console.log(`[UsersService] User ${id} updated successfully`);
     return user;
   }
 

@@ -58,14 +58,19 @@ class TripsProvider with ChangeNotifier {
   }
 
   Future<void> loadCompletedTrips() async {
+    _isLoading = true;
+    notifyListeners(); // Notify immediately to show loading indicator
+
     try {
       debugPrint('[TripsProvider] Loading completed trips...');
       _completedTrips = await _apiService.getCompletedTrips();
       debugPrint('[TripsProvider] Completed trips from API: ${_completedTrips.length}');
-      notifyListeners();
     } catch (e) {
       debugPrint('Error loading completed trips: $e');
       _completedTrips = [];
+    } finally {
+      _isLoading = false;
+      notifyListeners(); // Notify when done to hide loading indicator
     }
   }
 

@@ -88,69 +88,115 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          await Provider.of<TripsProvider>(context, listen: false).loadTrips();
-          await Provider.of<TripsProvider>(context, listen: false).loadUpcomingTrips();
-          await Provider.of<VehicleProvider>(context, listen: false).loadAssignedVehicle();
-          await Provider.of<NotificationsProvider>(context, listen: false).loadNotifications();
-        },
-        child: ListView(
-          padding: const EdgeInsets.all(AppTheme.spacingM),
-          children: [
-            Consumer<VehicleProvider>(
-              builder: (context, vehicleProvider, _) {
-                if (vehicleProvider.assignedVehicle != null) {
-                  return _buildVehicleCard(context, vehicleProvider);
-                }
-                return const SizedBox.shrink();
+      body: Consumer3<TripsProvider, VehicleProvider, NotificationsProvider>(
+        builder: (context, tripsProvider, vehicleProvider, notificationsProvider, _) {
+          // Show loading indicator if any provider is loading
+          if (tripsProvider.isLoading || vehicleProvider.isLoading || notificationsProvider.isLoading) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          // Build list of widgets to display
+          final List<Widget> children = [];
+
+          // Vehicle card
+          if (vehicleProvider.assignedVehicle != null) {
+            children.add(_buildVehicleCard(context, vehicleProvider));
+            children.add(const SizedBox(height: AppTheme.spacingM));
+          }
+
+          // Active trip card
+          final activeTrip = tripsProvider.activeTrip;
+          if (activeTrip != null && 
+              (activeTrip['status'] == 'in_progress' || activeTrip['status'] == 'IN_PROGRESS')) {
+            children.add(_buildActiveTripCard(context, tripsProvider));
+            children.add(const SizedBox(height: AppTheme.spacingM));
+          }
+
+          // Upcoming trips card
+          if (tripsProvider.upcomingTrips.isNotEmpty) {
+            children.add(_buildUpcomingTripsCard(context, tripsProvider));
+            children.add(const SizedBox(height: AppTheme.spacingM));
+          }
+
+          // Maintenance alert
+          if (vehicleProvider.maintenanceReminders.isNotEmpty) {
+            final dueReminders = vehicleProvider.maintenanceReminders
+                .where((r) {
+                  final nextDate = r['nextReminderDate'] != null
+                      ? DateTime.parse(r['nextReminderDate'])
+                      : null;
+                  return nextDate != null && nextDate.isBefore(DateTime.now());
+                })
+                .toList();
+            if (dueReminders.isNotEmpty) {
+              children.add(_buildMaintenanceAlert(context, dueReminders.length));
+              children.add(const SizedBox(height: AppTheme.spacingM));
+            }
+          }
+
+          // Show empty state if no content
+          if (children.isEmpty) {
+            return RefreshIndicator(
+              onRefresh: () async {
+                await Provider.of<TripsProvider>(context, listen: false).loadTrips();
+                await Provider.of<TripsProvider>(context, listen: false).loadUpcomingTrips();
+                await Provider.of<VehicleProvider>(context, listen: false).loadAssignedVehicle();
+                await Provider.of<NotificationsProvider>(context, listen: false).loadNotifications();
               },
-            ),
-            const SizedBox(height: AppTheme.spacingM),
-            Consumer<TripsProvider>(
-              builder: (context, tripsProvider, _) {
-                final activeTrip = tripsProvider.activeTrip;
-                // Only show if trip exists and status is in_progress
-                if (activeTrip != null && 
-                    (activeTrip['status'] == 'in_progress' || activeTrip['status'] == 'IN_PROGRESS')) {
-                  return _buildActiveTripCard(context, tripsProvider);
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            const SizedBox(height: AppTheme.spacingM),
-            Consumer<TripsProvider>(
-              builder: (context, tripsProvider, _) {
-                if (tripsProvider.upcomingTrips.isNotEmpty) {
-                  return _buildUpcomingTripsCard(context, tripsProvider);
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-            const SizedBox(height: AppTheme.spacingM),
-            Consumer<VehicleProvider>(
-              builder: (context, vehicleProvider, _) {
-                if (vehicleProvider.maintenanceReminders.isNotEmpty) {
-                  final dueReminders = vehicleProvider.maintenanceReminders
-                      .where((r) {
-                        final nextDate = r['nextReminderDate'] != null
-                            ? DateTime.parse(r['nextReminderDate'])
-                            : null;
-                        return nextDate != null && nextDate.isBefore(DateTime.now());
-                      })
-                      .toList();
-                  if (dueReminders.isNotEmpty) {
-                    return _buildMaintenanceAlert(context, dueReminders.length);
-                  }
-                }
-                return const SizedBox.shrink();
-              },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.dashboard_outlined,
+                          size: 64,
+                          color: AppTheme.neutral40,
+                        ),
+                        const SizedBox(height: AppTheme.spacingM),
+                        Text(
+                          'No data available',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: AppTheme.neutral60,
+                              ),
+                        ),
+                        const SizedBox(height: AppTheme.spacingS),
+                        Text(
+                          'Pull down to refresh',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppTheme.neutral60,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-        ),
+                ),
               ),
             );
           }
+
+          // Show content with refresh indicator
+          return RefreshIndicator(
+            onRefresh: () async {
+              await Provider.of<TripsProvider>(context, listen: false).loadTrips();
+              await Provider.of<TripsProvider>(context, listen: false).loadUpcomingTrips();
+              await Provider.of<VehicleProvider>(context, listen: false).loadAssignedVehicle();
+              await Provider.of<NotificationsProvider>(context, listen: false).loadNotifications();
+            },
+            child: ListView(
+              padding: const EdgeInsets.all(AppTheme.spacingM),
+              children: children,
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _buildVehicleCard(BuildContext context, VehicleProvider vehicleProvider) {
     final vehicle = vehicleProvider.assignedVehicle!;

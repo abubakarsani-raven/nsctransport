@@ -10,14 +10,20 @@ import '../../../providers/location_provider.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/location_utils.dart';
 import '../../../utils/map_utils.dart';
+import '../../../utils/distance_calculator.dart';
 import '../../../services/directions_service.dart';
 import '../../../services/geocoding_service.dart';
 import '../../../services/eta_service.dart';
 
 class ActiveTripScreen extends StatefulWidget {
   final String tripId;
+  final bool isReadOnly;
 
-  const ActiveTripScreen({super.key, required this.tripId});
+  const ActiveTripScreen({
+    super.key,
+    required this.tripId,
+    this.isReadOnly = false,
+  });
 
   @override
   State<ActiveTripScreen> createState() => _ActiveTripScreenState();
@@ -60,6 +66,9 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
   }
 
   Future<void> _initializeLocation() async {
+    // For read-only trips, we don't need to request location permissions
+    if (widget.isReadOnly) return;
+    
     // Request permissions and get current location when screen loads
     if (!mounted) return;
     
@@ -255,15 +264,21 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
         debugPrint('ActiveTripScreen: trip[\'startLocation\'] is null');
       }
       
-      // DO NOT load estimated distance on trip load - only when Start or Navigate is pressed
-      // Just show markers for start and end positions
-      debugPrint('ActiveTripScreen: Showing markers only - distance calculation will happen when Start/Navigate is pressed');
-      
-      // Clear any existing route
-      setState(() {
-        _estimatedRouteDistance = null;
-        _navigationRoute = null;
-      });
+      // For read-only (completed) trips, automatically load the route to show on map
+      if (widget.isReadOnly && _startLocation != null && _destination != null) {
+        debugPrint('ActiveTripScreen: Read-only mode - loading route for completed trip');
+        await _loadEstimatedDistance();
+      } else {
+        // DO NOT load estimated distance on trip load - only when Start or Navigate is pressed
+        // Just show markers for start and end positions
+        debugPrint('ActiveTripScreen: Showing markers only - distance calculation will happen when Start/Navigate is pressed');
+        
+        // Clear any existing route
+        setState(() {
+          _estimatedRouteDistance = null;
+          _navigationRoute = null;
+        });
+      }
     } else {
       debugPrint('ActiveTripScreen: Trip data is null');
     }
@@ -1543,7 +1558,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Active Trip'),
+        title: Text(widget.isReadOnly ? 'Completed Trip' : 'Active Trip'),
         actions: [
           // Vehicle and Passenger Details Button
           IconButton(
@@ -1551,17 +1566,18 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
             onPressed: _showVehicleAndPassengerDetails,
             tooltip: 'Vehicle & Passenger Details',
           ),
-          // Stop Tracking Button
-          Consumer<TripTrackingProvider>(
-            builder: (context, trackingProvider, _) {
-              if (!trackingProvider.isTracking) return const SizedBox.shrink();
-              return IconButton(
-                icon: const Icon(Icons.stop),
-                onPressed: _stopTracking,
-                tooltip: 'Stop Tracking',
-              );
-            },
-          ),
+          // Stop Tracking Button - only show for active trips
+          if (!widget.isReadOnly)
+            Consumer<TripTrackingProvider>(
+              builder: (context, trackingProvider, _) {
+                if (!trackingProvider.isTracking) return const SizedBox.shrink();
+                return IconButton(
+                  icon: const Icon(Icons.stop),
+                  onPressed: _stopTracking,
+                  tooltip: 'Stop Tracking',
+                );
+              },
+            ),
         ],
       ),
       body: Consumer<TripsProvider>(
@@ -1625,7 +1641,41 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
               // Update camera based on tracking state (skip if navigating to avoid conflicts)
               if (_mapController != null && !_isNavigating) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (trackingProvider.isTracking && currentLoc != null) {
+                  // For read-only (completed) trips, fit bounds to show full route
+                  if (widget.isReadOnly && _startLocation != null && _destination != null) {
+                    final bounds = LatLngBounds(
+                      southwest: LatLng(
+                        _startLocation!.latitude < _destination!.latitude 
+                            ? _startLocation!.latitude 
+                            : _destination!.latitude,
+                        _startLocation!.longitude < _destination!.longitude 
+                            ? _startLocation!.longitude 
+                            : _destination!.longitude,
+                      ),
+                      northeast: LatLng(
+                        _startLocation!.latitude > _destination!.latitude 
+                            ? _startLocation!.latitude 
+                            : _destination!.latitude,
+                        _startLocation!.longitude > _destination!.longitude 
+                            ? _startLocation!.longitude 
+                            : _destination!.longitude,
+                      ),
+                    );
+                    // Include route points if available
+                    if (_navigationRoute != null && _navigationRoute!.isNotEmpty) {
+                      final allPoints = List<LatLng>.from(_navigationRoute!);
+                      allPoints.add(_startLocation!);
+                      allPoints.add(_destination!);
+                      final routeBounds = _boundsFromLatLngList(allPoints);
+                      _mapController?.animateCamera(
+                        CameraUpdate.newLatLngBounds(routeBounds, 100.0),
+                      );
+                    } else {
+                      _mapController?.animateCamera(
+                        CameraUpdate.newLatLngBounds(bounds, 100.0),
+                      );
+                    }
+                  } else if (trackingProvider.isTracking && currentLoc != null) {
                     // When tracking: follow current location with bearing and 3D street view
                     final bearing = locationProvider.currentBearing ?? 0;
                     _mapController?.animateCamera(
@@ -1808,15 +1858,20 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                         Polyline(
                           polylineId: const PolylineId('planned_route'),
                           points: _navigationRoute!,
-                          color: trackingProvider.isTracking
-                              ? Colors.green
-                              : (_isNavigating ? Colors.blue : Colors.blue),
+                          color: widget.isReadOnly
+                              ? Colors.grey.shade600 // Gray for completed trips
+                              : (trackingProvider.isTracking
+                                  ? Colors.green
+                                  : (_isNavigating ? Colors.blue : Colors.blue)),
                           width: 6,
-                          patterns: [],
+                          patterns: widget.isReadOnly
+                              ? [PatternItem.dash(20), PatternItem.gap(10)] // Dashed for completed
+                              : [],
                           zIndex: 1,
                         ),
-                      // Actual GPS tracking route (only show when tracking and we have enough points)
-                      if (trackingProvider.isTracking &&
+                      // Actual GPS tracking route (only show when tracking and not read-only)
+                      if (!widget.isReadOnly &&
+                          trackingProvider.isTracking &&
                           routeLatLngs.length > 3 &&
                           _navigationRoute != null &&
                           _navigationRoute!.isNotEmpty)
@@ -2050,7 +2105,9 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                                 _buildMetric(
                                   context,
                                   'Distance',
-                                  _getDistanceDisplay(trackingProvider),
+                                  widget.isReadOnly
+                                      ? _getCompletedTripDistance(trip)
+                                      : _getDistanceDisplay(trackingProvider),
                                   Icons.straighten,
                                   AppTheme.primaryColor,
                                 ),
@@ -2066,16 +2123,21 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                                 _buildMetric(
                                   context,
                                   'Duration',
-                                  trackingProvider.isTracking
-                                      ? _formatDuration(trackingProvider.duration)
-                                      : '0m',
+                                  widget.isReadOnly && trip['duration'] != null
+                                      ? _formatDurationFromMinutes(
+                                          trip['duration'] is int
+                                              ? (trip['duration'] as int).toDouble()
+                                              : trip['duration'] as double)
+                                      : (trackingProvider.isTracking
+                                          ? _formatDuration(trackingProvider.duration)
+                                          : '0m'),
                                   Icons.timer,
                                   Colors.green,
                                 ),
                               ],
                             ),
-                            // Route progress bar
-                            if (_progressPercentage != null && trackingProvider.isTracking) ...[
+                            // Route progress bar - only show for active trips
+                            if (!widget.isReadOnly && _progressPercentage != null && trackingProvider.isTracking) ...[
                               const SizedBox(height: 8),
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
@@ -2100,79 +2162,112 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                                     ),
                               ),
                             ],
-                            const SizedBox(height: 12),
-                            // Action buttons
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: trackingProvider.isTracking ? null : _startTracking,
-                                    icon: const Icon(Icons.play_arrow),
-                                    label: const Text('Start'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primaryColor,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: _isLoadingRoute ? null : _openNavigation,
-                                    icon: _isLoadingRoute
-                                        ? const SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : Icon(_isNavigating ? Icons.close : Icons.navigation),
-                                    label: Text(_isNavigating ? 'Stop Nav' : 'Navigate'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor:
-                                          _isNavigating ? Colors.grey : Colors.blue.shade700,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            ElevatedButton(
-                              onPressed: _completeTrip,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.successColor,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                            // Action buttons - only show for active trips (not read-only)
+                            if (!widget.isReadOnly) ...[
+                              const SizedBox(height: 12),
+                              Row(
                                 children: [
-                                  Icon(Icons.check_circle, size: 20),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Complete Trip',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: trackingProvider.isTracking ? null : _startTracking,
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: const Text('Start'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppTheme.primaryColor,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: _isLoadingRoute ? null : _openNavigation,
+                                      icon: _isLoadingRoute
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Icon(_isNavigating ? Icons.close : Icons.navigation),
+                                      label: Text(_isNavigating ? 'Stop Nav' : 'Navigate'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            _isNavigating ? Colors.grey : Colors.blue.shade700,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
+                              const SizedBox(height: 8),
+                              ElevatedButton(
+                                onPressed: _completeTrip,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.successColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.check_circle, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Complete Trip',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else ...[
+                              // Read-only message for completed trips
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.successColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: AppTheme.successColor.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.check_circle,
+                                      color: AppTheme.successColor,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Trip Completed',
+                                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                            color: AppTheme.successColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -2223,6 +2318,41 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
         ],
       ),
     );
+  }
+
+  /// Get distance display for completed trips
+  /// Tries trip distance first, then route distance, then calculates from coordinates
+  String _getCompletedTripDistance(Map<String, dynamic> trip) {
+    // First, try to use the trip's stored distance
+    if (trip['distance'] != null) {
+      final distance = trip['distance'] is int
+          ? (trip['distance'] as int).toDouble()
+          : trip['distance'] as double;
+      if (distance > 0) {
+        return LocationUtils.formatDistance(distance);
+      }
+    }
+    
+    // If trip distance is 0 or null, use the estimated route distance
+    if (_estimatedRouteDistance != null && _estimatedRouteDistance! > 0) {
+      return LocationUtils.formatDistance(_estimatedRouteDistance!);
+    }
+    
+    // If route distance is not available, calculate from start to destination coordinates
+    if (_startLocation != null && _destination != null) {
+      final distance = DistanceCalculator.calculateDistance(
+        _startLocation!.latitude,
+        _startLocation!.longitude,
+        _destination!.latitude,
+        _destination!.longitude,
+      );
+      if (distance > 0) {
+        return LocationUtils.formatDistance(distance);
+      }
+    }
+    
+    // Fallback to 0 if nothing is available
+    return '0 m';
   }
 
   /// Get distance display string based on tracking state
@@ -2277,6 +2407,18 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
     return '${minutes}m';
   }
 
+  String _formatDurationFromMinutes(double minutes) {
+    if (minutes < 60) {
+      return '${minutes.toInt()}m';
+    }
+    final hours = (minutes / 60).floor();
+    final mins = (minutes % 60).toInt();
+    if (mins == 0) {
+      return '${hours}h';
+    }
+    return '${hours}h ${mins}m';
+  }
+
   /// Build markers set - Show Start Location, Driver Location, and Destination
   Set<Marker> _buildMarkers(
     dynamic currentLoc, // LocationPoint? from LocationProvider
@@ -2308,8 +2450,9 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
       );
     }
     
-    // Marker 2: Driver/Current Location - only show while tracking, with subtle styling
-    if (trackingProvider.isTracking &&
+    // Marker 2: Driver/Current Location - only show while tracking and not read-only, with subtle styling
+    if (!widget.isReadOnly &&
+        trackingProvider.isTracking &&
         currentLoc != null &&
         currentLoc.lat != null &&
         currentLoc.lng != null &&

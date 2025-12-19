@@ -37,17 +37,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           }
 
           if (notificationsProvider.notifications.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.notifications_none, size: 64, color: AppTheme.neutral40),
-                  const SizedBox(height: AppTheme.spacingM),
-                  Text(
-                    'No notifications',
-                    style: Theme.of(context).textTheme.titleMedium,
+            return RefreshIndicator(
+              onRefresh: () => notificationsProvider.loadNotifications(),
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.7,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.notifications_none, size: 64, color: AppTheme.neutral40),
+                        const SizedBox(height: AppTheme.spacingM),
+                        Text(
+                          'No notifications',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppTheme.spacingS),
+                        Text(
+                          'Pull down to refresh',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: AppTheme.neutral60,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
             );
           }

@@ -60,6 +60,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     final participants = request?['participantIds'] ?? [];
     final actionHistory = request?['actionHistory'] ?? [];
     
+    // Check if trip is completed
+    final tripStatus = trip['status']?.toString().toLowerCase() ?? '';
+    final isCompleted = tripStatus == 'completed' || tripStatus == 'COMPLETED';
+    
     // Safely extract vehicle and requester data
     // They might be Maps (populated objects) or Strings (just IDs)
     final vehicleData = vehicle is Map<String, dynamic> ? vehicle : null;
@@ -70,18 +74,21 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         leading: const DrawerMenuButton(),
         title: const Text('Trip Details'),
         actions: [
-          // Map button
+          // Map button - only show for non-completed trips, or show read-only map for completed
           IconButton(
             icon: const Icon(Icons.map),
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => ActiveTripScreen(tripId: widget.tripId),
+                  builder: (_) => ActiveTripScreen(
+                    tripId: widget.tripId,
+                    isReadOnly: isCompleted,
+                  ),
                 ),
               );
             },
-            tooltip: 'View on Map',
+            tooltip: isCompleted ? 'View Route (Read Only)' : 'View on Map',
           ),
         ],
       ),
